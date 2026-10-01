@@ -1,35 +1,85 @@
 @import "tailwindcss";
+@import "../styles/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    color-scheme: dark;
+    /* La navegación por anclas (Navbar, CTAs) usa scroll suave; el bloque
+       de prefers-reduced-motion al final de este archivo ya lo neutraliza
+       (scroll-behavior: auto !important) cuando corresponde. */
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system,
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  img,
+  svg,
+  video {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Selección de texto acorde a la identidad visual */
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-background);
+  }
+
+  /* Scrollbar discreto (navegadores basados en WebKit; Firefox usa las
+     propiedades scrollbar-width/scrollbar-color definidas arriba en html) */
+  ::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 9999px;
+    border: 2px solid var(--color-background);
+  }
 }
 
 /*
  * Red de seguridad a nivel CSS para prefers-reduced-motion.
  * GSAP ya se salta las animaciones no esenciales a nivel de JS (ver
  * src/hooks/useGsapAnimation.ts), pero cualquier transición o animación
- * CSS que se agregue más adelante también debería respetar esta preferencia.
+ * CSS también debería respetar esta preferencia. Se deja fuera de
+ * @layer base a propósito: los estilos sin capa tienen prioridad sobre
+ * cualquier @layer (incluidas las utilidades de Tailwind), así que esta
+ * regla gana incluso si algún componente usa transition-* de Tailwind.
  */
 @media (prefers-reduced-motion: reduce) {
   *,
