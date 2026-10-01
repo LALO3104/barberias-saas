@@ -1,8 +1,11 @@
 # Barberías
 
-Base técnica de un SaaS para barberías. **Todavía no incluye** el diseño de
-ningún cliente (p. ej. "Barbería Kings"), autenticación, tablas de Supabase
-ni lógica de reservas — es intencional, ver `ARCHITECTURE.md`.
+SaaS para barberías. La raíz (`/`) sirve hoy la landing pública de
+**Barbería Kings** — con **contenido demo/provisional**, ver
+`src/data/tenants/kings.ts` — pensada como la primera implementación de una
+plantilla reutilizable para el resto del sistema. **Todavía no incluye**
+autenticación, tablas de Supabase, reservas reales ni dashboard —
+intencional, ver `ARCHITECTURE.md`.
 
 ## Stack
 
@@ -27,11 +30,21 @@ npm run dev
 
 Abre [http://localhost:3000](http://localhost:3000).
 
+## Rutas
+
+- `/` — landing pública de Barbería Kings (contenido demo/provisional, ver
+  `src/data/tenants/kings.ts`). El CTA "Reservar cita" navega a `#reservar`
+  dentro de la misma página — no hay sistema de reservas todavía.
+- `/design-system` — Design System Preview (color, tipografía, botones,
+  una tarjeta, espaciado). Referencia viva de los tokens mientras se
+  construyen más secciones — no es una página real del sitio.
+
 ## Cómo comprobar que Next.js funciona
 
-Con `npm run dev` corriendo, entra a `http://localhost:3000`. Si ves la
-página "Proyecto inicializado correctamente", el servidor de desarrollo, el
-App Router y Tailwind están funcionando. También puedes correr una build de
+Con `npm run dev` corriendo, entra a `http://localhost:3000`. Deberías ver
+la landing de Barbería Kings (con el aviso "Vista previa — contenido de
+muestra..." arriba del todo). Si se ve, el servidor de desarrollo, el App
+Router y Tailwind están funcionando. También puedes correr una build de
 producción real:
 
 ```bash
@@ -44,15 +57,16 @@ Si ambos comandos terminan sin errores, el proyecto compila correctamente
 
 ## Cómo comprobar que GSAP quedó bien instalado
 
-En la misma página de inicio, el bloque de texto entra con una animación de
-fade + slide apenas carga la página. Esa animación:
+En `/`, el Hero entra con un stagger corto (eyebrow → título → subtítulo →
+CTAs) apenas carga la página — usa un timeline de GSAP directamente en
+`components/sections/Hero.tsx`. Si bajas por la página, cada sección
+siguiente (Experiencia, Servicios, Barberos, Galería, Horarios, CTA final)
+aparece con un fade + slide al entrar en el viewport — eso es
+`ScrollReveal` (`src/components/animations/ScrollReveal.tsx`) usando
+`ScrollTrigger`. Ambos dependen de que `src/lib/gsap/gsap.ts` haya
+importado `gsap` y registrado `ScrollTrigger`/`SplitText` sin errores.
 
-- Viene de `src/components/animations/Reveal.tsx`, que usa el hook
-  `useGsapAnimation` (`src/hooks/useGsapAnimation.ts`).
-- Depende de que `src/lib/gsap/gsap.ts` haya importado `gsap` y registrado
-  `ScrollTrigger` y `SplitText` sin errores.
-
-Si la animación se ve, GSAP quedó bien instalado y registrado. Para
+Si las animaciones se ven, GSAP quedó bien instalado y registrado. Para
 confirmarlo también desde la consola del navegador, con la página abierta:
 
 ```js
@@ -62,6 +76,36 @@ window.gsap; // debería existir y no ser undefined
 Si activas "reducir movimiento" en tu sistema operativo y recargas, el
 mismo texto debe aparecer **sin** animar — esa es la verificación de que se
 está respetando `prefers-reduced-motion`.
+
+## Base de datos (Supabase local)
+
+Requiere Docker Desktop corriendo (en Windows, con WSL2). La CLI de Supabase
+ya viene como dependencia de desarrollo.
+
+```bash
+npm run db:start   # primera vez: descarga imágenes y aplica las migraciones
+npm run db:reset   # recrea la base desde cero con supabase/migrations/
+npm run db:types   # regenera src/types/supabase.ts desde la base local
+```
+
+Las migraciones viven en `supabase/migrations/` y son la única forma de
+cambiar el esquema: nunca editar una base remota sin su migración en Git.
+
+### Proyecto remoto de desarrollo
+
+El proyecto de Supabase `barberias` (ref `ncirywuyzeoyqhtlmisj`) es el
+entorno de **desarrollo** y ya tiene aplicadas las migraciones de este
+repositorio, con las mismas versiones que los nombres de archivo. Para
+trabajar contra él con la CLI:
+
+```bash
+npx supabase login
+npx supabase link --project-ref ncirywuyzeoyqhtlmisj
+npx supabase migration list   # local y remoto deben coincidir
+npm run db:types:remote       # regenera los tipos desde el proyecto remoto
+```
+
+Cuando exista producción será un proyecto aparte.
 
 ## Variables de entorno
 

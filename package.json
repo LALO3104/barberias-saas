@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "supabase start",
+    "db:reset": "supabase db reset",
+    "db:types": "supabase gen types typescript --local --schema public > src/types/supabase.ts",
+    "db:types:remote": "supabase gen types typescript --project-id ncirywuyzeoyqhtlmisj --schema public > src/types/supabase.ts"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -25,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "supabase": "^2.119.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
