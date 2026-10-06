@@ -387,7 +387,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
-          features: NonNullable<Json>
+          features: Json
           max_barbers: number | null
           max_members: number | null
           name: string
@@ -396,7 +396,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
-          features?: NonNullable<Json>
+          features?: Json
           max_barbers?: number | null
           max_members?: number | null
           name: string
@@ -405,7 +405,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
-          features?: NonNullable<Json>
+          features?: Json
           max_barbers?: number | null
           max_members?: number | null
           name?: string
@@ -579,11 +579,11 @@ export type Database = {
           plan_code: string
           postal_code: string | null
           public_phone: string | null
-          site_content: NonNullable<Json>
+          site_content: Json
           slug: string
           state: string | null
           status: string
-          theme: NonNullable<Json>
+          theme: Json
           timezone: string
           updated_at: string
         }
@@ -598,11 +598,11 @@ export type Database = {
           plan_code: string
           postal_code?: string | null
           public_phone?: string | null
-          site_content?: NonNullable<Json>
+          site_content?: Json
           slug: string
           state?: string | null
           status?: string
-          theme?: NonNullable<Json>
+          theme?: Json
           timezone?: string
           updated_at?: string
         }
@@ -617,11 +617,11 @@ export type Database = {
           plan_code?: string
           postal_code?: string | null
           public_phone?: string | null
-          site_content?: NonNullable<Json>
+          site_content?: Json
           slug?: string
           state?: string | null
           status?: string
-          theme?: NonNullable<Json>
+          theme?: Json
           timezone?: string
           updated_at?: string
         }
@@ -640,7 +640,38 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      book_appointment: {
+        Args: {
+          _barber_id: string
+          _client_name: string
+          _client_note?: string
+          _client_phone: string
+          _service_id: string
+          _slug: string
+          _start_at: string
+        }
+        Returns: Json
+      }
+      get_available_slots: {
+        Args: {
+          _barber_id: string
+          _service_id: string
+          _slug: string
+          _target_date: string
+        }
+        Returns: {
+          slot_start: string
+        }[]
+      }
+      get_public_tenant: { Args: { _slug: string }; Returns: Json }
+      set_barber_working_hours: {
+        Args: { _barber_id: string; _intervals: Json; _tenant_id: string }
+        Returns: undefined
+      }
+      set_business_hours: {
+        Args: { _intervals: Json; _tenant_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       appointment_source: "online" | "staff" | "walk_in"
@@ -790,4 +821,3 @@ export const Constants = {
     },
   },
 } as const
-
