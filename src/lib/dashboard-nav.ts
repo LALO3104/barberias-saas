@@ -25,11 +25,13 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Configuración", href: "/dashboard/configuracion", icon: "cog" },
 ];
 
+// "Mi agenda" usa la misma ruta que "Citas" del admin: la página filtra por rol
+// (el barbero solo ve sus citas). Reemplaza a los antiguos "Mis citas" y
+// "Mi agenda", que apuntaban a rutas inexistentes.
 const BARBER_NAV: NavItem[] = [
   { label: "Inicio", href: "/dashboard", icon: "home" },
-  { label: "Mis citas", href: "/dashboard/mis-citas", icon: "calendar" },
+  { label: "Mi agenda", href: "/dashboard/citas", icon: "calendar" },
   { label: "Mi horario", href: "/dashboard/horarios", icon: "clock" },
-  { label: "Mi agenda", href: "/dashboard/mi-agenda", icon: "clock" },
 ];
 
 export function getNavForRole(role: MemberRole): NavItem[] {

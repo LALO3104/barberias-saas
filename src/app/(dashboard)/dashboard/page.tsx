@@ -1,6 +1,15 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getTodayInTimezone } from "@/lib/format";
+import {
+  addDaysToKey,
+  formatStatusCount,
+  zonedDayStartUtc,
+  type AppointmentStatus,
+} from "@/lib/appointments";
+import { StatusIcon } from "@/components/dashboard/appointments/AppointmentStatusBadge";
 
 export const metadata: Metadata = {
   title: "Dashboard — Barberías",
@@ -20,6 +29,8 @@ export default async function DashboardPage() {
   const roleLabel =
     membership?.role === "admin" ? "Administrador" : "Barbero";
 
+  const today = supabase && membership ? await getTodayCounts(supabase, membership.tenantId) : null;
+
   return (
     <div className="space-y-8">
       {/* Header de bienvenida */}
@@ -34,10 +45,9 @@ export default async function DashboardPage() {
 
       {/* Placeholder cards */}
       <div className="grid gap-[var(--spacing-gutter)] sm:grid-cols-2 lg:grid-cols-3">
-        <PlaceholderCard
-          title="Citas de hoy"
-          value="—"
-          description="Próximamente"
+        <TodayAppointmentsCard
+          counts={today}
+          agendaLabel={membership?.role === "admin" ? "Ver citas" : "Ver mi agenda"}
         />
         <PlaceholderCard
           title="Clientes registrados"
@@ -82,6 +92,84 @@ export default async function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Citas de hoy ────────────────────────────────────────────────────────────
+
+type ServerClient = NonNullable<Awaited<ReturnType<typeof getSupabaseServer>>>;
+type TodayCounts = { total: number; byStatus: Partial<Record<AppointmentStatus, number>> };
+
+/**
+ * Cuenta las citas del día local del tenant. RLS limita el alcance: el admin
+ * cuenta todas las de su barbería y el barbero solo las suyas.
+ */
+async function getTodayCounts(supabase: ServerClient, tenantId: string): Promise<TodayCounts | null> {
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("timezone")
+    .eq("id", tenantId)
+    .single();
+  if (!tenant) return null;
+
+  const todayKey = getTodayInTimezone(tenant.timezone);
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("status")
+    .eq("tenant_id", tenantId)
+    .gte("start_at", zonedDayStartUtc(todayKey, tenant.timezone).toISOString())
+    .lt("start_at", zonedDayStartUtc(addDaysToKey(todayKey, 1), tenant.timezone).toISOString());
+  if (error) return null;
+
+  const byStatus: TodayCounts["byStatus"] = {};
+  for (const row of data ?? []) byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+  return { total: data?.length ?? 0, byStatus };
+}
+
+function TodayAppointmentsCard({
+  counts,
+  agendaLabel,
+}: {
+  counts: TodayCounts | null;
+  agendaLabel: string;
+}) {
+  const lines: AppointmentStatus[] = ["pending", "confirmed", "completed", "cancelled", "no_show"];
+
+  return (
+    <Link
+      href="/dashboard/citas"
+      className="group rounded-card border border-border bg-background-secondary p-[var(--spacing-card)] transition-colors hover:border-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <p className="text-label font-sans uppercase tracking-label text-muted">Citas de hoy</p>
+      {counts === null ? (
+        <>
+          <p className="mt-2 text-section font-display text-foreground">—</p>
+          <p className="mt-1 text-sm font-sans text-muted">No se pudo cargar</p>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-section font-display text-foreground">
+            {counts.total}{" "}
+            <span className="text-body font-sans text-muted">
+              {counts.total === 1 ? "cita" : "citas"}
+            </span>
+          </p>
+          {counts.total > 0 && (
+            <ul className="mt-2 space-y-1 text-sm font-sans text-muted">
+              {lines
+                .filter((s) => counts.byStatus[s])
+                .map((s) => (
+                  <li key={s} className="flex items-center gap-2">
+                    <StatusIcon status={s} className="h-3.5 w-3.5" />
+                    {formatStatusCount(s, counts.byStatus[s] ?? 0)}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </>
+      )}
+      <p className="mt-3 text-sm font-sans text-accent group-hover:underline">{agendaLabel} →</p>
+    </Link>
   );
 }
 

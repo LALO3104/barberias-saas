@@ -133,8 +133,8 @@ export async function bookAppointment(
     // check_violation — validaciones del backend
     if (error.code === ERROR_CODES.VALIDATION || error.code === "23514") {
       throw new PublicApiError(
-        error.message?.includes("E.164")
-          ? "El teléfono debe estar en formato internacional (ej: +525512345678)"
+        error.message?.includes("teléfono")
+          ? "Revisa tu teléfono: debe tener 10 dígitos (ej: 55 1234 5678)."
           : "Los datos de la reserva no son válidos. Revisa la información e intenta de nuevo.",
         error.code
       );

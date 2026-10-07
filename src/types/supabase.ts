@@ -664,6 +664,14 @@ export type Database = {
         }[]
       }
       get_public_tenant: { Args: { _slug: string }; Returns: Json }
+      set_appointment_status: {
+        Args: {
+          _appointment_id: string
+          _new_status: Database["public"]["Enums"]["appointment_status"]
+          _reason?: string
+        }
+        Returns: Json
+      }
       set_barber_working_hours: {
         Args: { _barber_id: string; _intervals: Json; _tenant_id: string }
         Returns: undefined

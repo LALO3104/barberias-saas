@@ -616,7 +616,10 @@ function StepClientData({
   onBack: () => void;
 }) {
   const nameValid = name.trim().length > 0;
-  const phoneValid = phone.trim().length >= 8;
+  // Pre-chequeo amable: al menos 10 dígitos. La normalización y validación
+  // real (E.164) ocurren en el servidor, dentro de book_appointment.
+  const phoneDigits = phone.replace(/\D/g, "").length;
+  const phoneValid = phoneDigits >= 10 && phoneDigits <= 15;
   const canContinue = nameValid && phoneValid;
 
   return (
@@ -666,13 +669,14 @@ function StepClientData({
             type="tel"
             value={phone}
             onChange={(e) => onChangePhone(e.target.value)}
-            placeholder="+52 55 1234 5678"
+            placeholder="55 1234 5678"
             required
             autoComplete="tel"
+            inputMode="tel"
             className="mt-1.5 w-full rounded-button border border-border bg-background px-4 py-3 text-body font-sans text-foreground placeholder:text-muted/50 transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
           />
           <p className="mt-1 text-sm text-muted">
-            Formato internacional: +52 seguido del número
+            10 dígitos. Puedes escribirlo con espacios o guiones.
           </p>
         </div>
 
