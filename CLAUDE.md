@@ -1,234 +1,218 @@
 @AGENTS.md
 
-# Barberías SaaS — guía para Claude Code
+# Barberías SaaS — contexto del proyecto
+
+Las reglas generales de comportamiento (alcance, cuándo detenerse,
+seguridad, Git, pruebas, reporte, prioridades) están en `AGENTS.md`, que se
+carga arriba. Aquí va lo específico de este proyecto.
 
 SaaS multi-tenant para barberías: landing pública por barbería con reservas en
-línea, y un dashboard para administrar barberos, servicios, horarios y citas.
-Primer cliente: **Barbería Kings** (slug `kings`).
+línea y dashboard privado para administrar barberos, servicios, horarios y
+citas. Primer cliente/demo: **Barbería Kings** (`/kings`).
 
-- Repositorio: `LALO3104/barberias-saas` (rama principal `main`).
-- Supabase: proyecto `ncirywuyzeoyqhtlmisj`.
-- Desarrollo en Windows (`cmd`). Los avisos de Git "LF will be replaced by
-  CRLF" son normales.
+- Repositorio `LALO3104/barberias-saas`, rama principal `main`. Quien
+  autoriza commits, push, merge y cambios al remoto es **Eduardo**.
+- Desarrollo en Windows (`cmd`). Los avisos de Git `LF will be replaced by
+  CRLF` son normales.
 
-`ARCHITECTURE.md` explica el sistema visual, GSAP y la separación contenido /
-presentación, pero sus secciones sobre Supabase, reservas y dashboard como
-"futuro" están **desactualizadas**: todo eso ya existe (ver abajo).
+## 1. Fuente de verdad
 
----
+Prioridad: código del repo → `supabase/migrations/` → `supabase/tests/` →
+`AGENTS.md` y este archivo → documentación histórica.
 
-## Stack y comandos
+`ARCHITECTURE.md` sigue siendo válido para sistema visual, GSAP y separación
+contenido/presentación, pero sus secciones que llaman "futuro" a Supabase,
+reservas y dashboard están desactualizadas: todo eso ya existe.
+
+El último commit y la última migración se consultan con `git log` y
+`supabase/migrations/`; no asumirlos. Steps cerrados al escribir esta guía:
+4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
+8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas).
+
+## 2. Stack y comandos
 
 Next.js 16 (App Router, Server Actions, `src/proxy.ts` en lugar de
 middleware) · React 19 · TypeScript · Tailwind CSS v4 · GSAP · Supabase
-(Postgres + Auth + RLS).
+(Postgres, Auth, RLS).
 
 ```
-npm run dev         # servidor local
-npm run lint        # ESLint
-npm run typecheck   # next typegen && tsc --noEmit
-npm run build       # build de producción
+npm run dev | lint | typecheck | build      # typecheck = next typegen && tsc --noEmit
 ```
 
-Antes de dar un trabajo por terminado: `lint`, `typecheck` y `build` deben
-pasar.
+`build` puede fallar en entornos sin red al descargar Inter/Playfair Display
+de Google Fonts: es un fallo externo, no del código; reportarlo así.
 
-**No ejecutes** `npm run db:types:remote` ni `db:types`: sin token de la CLI
-sobrescriben `src/types/supabase.ts` con un error. Ver "Tipos".
-
----
-
-## Mapa del código
+## 3. Mapa del código
 
 ```
 src/app/
-  (public)/page.tsx            landing raíz (demo)
-  [slug]/page.tsx              landing pública de cada barbería (/kings)
-  (auth)/                      login, forgot/reset password, callback
-  (dashboard)/layout.tsx       sesión + membresía obligatorias; nav por rol
+  (public)/page.tsx               landing raíz (demo)
+  [slug]/page.tsx                 landing pública por barbería (/kings)
+  (auth)/                         login, forgot/reset password, callback
+  (dashboard)/layout.tsx          exige sesión + membresía; nav por rol
   (dashboard)/dashboard/
-    page.tsx                   inicio (tarjeta "Citas de hoy")
-    barberos/  servicios/      admin
-    horarios/                  admin (barbería + barberos) / barbero (su horario)
-    citas/                     admin "Citas" / barbero "Mi agenda" (misma ruta)
+    page.tsx                      inicio (tarjeta "Citas de hoy")
+    barberos/  servicios/         solo admin
+    horarios/                     admin: barbería y barberos · barber: su horario
+    citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
 src/lib/
-  auth.ts                      getAuthenticatedUser() → activeMembership {tenantId, role}
-  supabase/server.ts client.ts cliente con sesión del usuario (RLS)
-  supabase/admin.ts            service_role — NO usar (ver reglas)
-  appointments.ts              estados, transiciones, fechas en zona del tenant
-  schedule.ts format.ts        horarios, formatos, getTodayInTimezone()
-  public-api.ts                RPC públicas desde el navegador (reserva)
-  dashboard-nav.ts             menú por rol
-src/components/                ui/ (primitivos), dashboard/*, public/*, sections/, animations/
-src/types/supabase.ts          tipos generados de la base
-supabase/migrations/           14 migraciones (fuente de verdad del esquema)
-supabase/tests/                pruebas SQL (solo base local)
+  auth.ts                         getAuthenticatedUser() → activeMembership {tenantId, role}
+  supabase/server.ts, client.ts   clientes con la sesión del usuario (RLS)
+  supabase/admin.ts               service_role — NO usar (§4)
+  appointments.ts                 estados, transiciones, fechas en zona del tenant
+  schedule.ts, format.ts          horarios, formatos, getTodayInTimezone()
+  public-api.ts                   RPC públicas de la reserva (desde el navegador)
+  dashboard-nav.ts                menú por rol
+src/components/                   ui/, dashboard/*, public/*, sections/, animations/
+src/types/supabase.ts             tipos generados del esquema (§6)
+supabase/migrations/              esquema esperado (fuente de verdad)
+supabase/tests/                   pruebas SQL (§9)
 ```
 
----
+## 4. Seguridad en este proyecto
 
-## Reglas de seguridad (no negociables)
+- **Tenant y rol:** siempre `getAuthenticatedUser(supabase)` →
+  `activeMembership.tenantId` / `.role` (vienen de `tenant_members`). Nunca
+  de formularios, query params, props ni JWT metadata.
+- **`getSupabaseAdmin()` (`service_role`)** existe pero no se usa en ningún
+  flujo; no introducirlo sin autorización explícita.
+- **Server Actions de referencia:** `dashboard/barberos/actions.ts`
+  (`getAdminContext`) y `dashboard/citas/actions.ts`.
+- **Secretos:** no tocar `.env`, `.env.local`, `.env.production` (la
+  plantilla es `.env.local.example`); `SUPABASE_SERVICE_ROLE_KEY` nunca como
+  `NEXT_PUBLIC_*`.
 
-1. **Tenant y rol salen del servidor, nunca del cliente.** Siempre de
-   `getAuthenticatedUser(supabase)` → `activeMembership.tenantId` / `.role`
-   (que vienen de `tenant_members`). Nunca de formularios, query params,
-   JWT metadata ni props.
-2. **No usar `service_role`** (`getSupabaseAdmin`) en flujos del dashboard ni
-   públicos. Todo pasa por el cliente con la sesión del usuario y RLS. Si una
-   tarea parece necesitarlo, detente y pregunta.
-3. **RLS siempre activo.** Nunca desactivarlo ni "abrir" una política para que
-   algo funcione.
-4. **Autorización en capas:** Server Action + RLS + SQL (funciones, triggers,
-   permisos por columna). Ocultar un botón en React no es seguridad.
-5. **Server Actions:** reciben `unknown`, validan todo (UUIDs, enums, rangos,
-   longitudes), filtran por `tenant_id` del contexto y actualizan con objetos
-   de campos explícitos. Nunca `.update(formData)` ni pasar objetos del
-   cliente directo a la base. Patrón de referencia:
-   `dashboard/barberos/actions.ts` (`getAdminContext`) y
-   `dashboard/citas/actions.ts`.
-6. **No tocar secretos:** ni `.env*` (salvo `.env.local.example` si se pide),
-   ni claves en el código, ni exponer `SUPABASE_SERVICE_ROLE_KEY` como
-   `NEXT_PUBLIC_*`.
+## 5. Base de datos
 
----
+**Migraciones:** `YYYYMMDDHHMMSS_descripcion.sql`, posteriores a la última.
+**Eduardo aplica cada una a mano en el SQL Editor**; el agente solo verifica
+el remoto con consultas de lectura.
 
-## Base de datos y migraciones
+**Historial remoto desincronizado** (repo: 14 migraciones; registradas en el
+remoto: 9; además 6 funciones difieren del repo solo en comentarios).
+Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
+de un Step dedicado. Las migraciones del repo son el esquema correcto.
 
-- **Todo cambio de esquema = una migración nueva** en `supabase/migrations/`,
-  nombre `YYYYMMDDHHMMSS_descripcion.sql` (posterior a la última).
-- **Nunca editar migraciones existentes**, ni hacer squash, ni reordenar.
-- **Nunca aplicar nada al Supabase remoto.** Eduardo aplica cada migración a
-  mano en el SQL Editor. Prohibido `supabase db push`, `db reset` o
-  `apply_migration` contra el proyecto real. El historial remoto de
-  migraciones está desincronizado (9 registradas vs 14): no intentar
-  "arreglarlo" sin que se pida.
-- Verificar el remoto solo con consultas de lectura.
+**Convenciones SQL:**
+- `set search_path = ''` y nombres calificados (`public.x`, `private.x`,
+  `auth.uid()`); obligatorio en `SECURITY DEFINER`.
+- Helpers: `private.is_member(tenant)`, `private.is_admin(tenant)`,
+  `private.my_barber_id(tenant)`; en policies, envueltos en `(select …)`.
+- Preferir `SECURITY INVOKER`; `SECURITY DEFINER` solo con validaciones
+  explícitas de tenant y permisos. Revocar `EXECUTE` de `public`/`anon` salvo
+  que se necesite.
+- Aislamiento con FKs compuestas `(tenant_id, id)`.
 
-### Convenciones SQL
+**Datos:**
+- Fechas `timestamptz`; el negocio se interpreta en `tenants.timezone`, nunca
+  en la zona del navegador (helpers en `lib/appointments.ts`,
+  `lib/format.ts`, `lib/schedule.ts`).
+- Dinero en centavos (`price_cents`), nunca floats; comisiones en puntos base
+  (`*_bps`).
+- Teléfonos en E.164; los normaliza `private.normalize_phone_mx` **dentro de
+  SQL** (p. ej. en `book_appointment`). Es interna: la app no puede llamarla.
+- Catálogos no se borran (`is_active = false`); citas no se borran (cambian
+  de estado).
 
-- Funciones con `set search_path = ''` y nombres totalmente calificados
-  (`public.x`, `private.x`, `auth.uid()`).
-- Helpers de autorización en `private`: `is_member(tenant)`,
-  `is_admin(tenant)`, `my_barber_id(tenant)`. En políticas, envolverlos en
-  `(select ...)`.
-- `SECURITY DEFINER` solo con validaciones explícitas adentro; preferir
-  `SECURITY INVOKER` para que RLS aplique. Revocar `EXECUTE` de `public` /
-  `anon` y otorgar solo a quien lo necesita.
-- Integridad multi-tenant con **FKs compuestas `(tenant_id, id)`**.
-- Fechas en `timestamptz`; "un día" es el día local de `tenants.timezone`.
-- Dinero en centavos (`price_cents`), comisiones en puntos base (`*_bps`).
-- Teléfonos en E.164 (`private.normalize_phone_mx` normaliza la entrada).
-- Catálogos no se borran: `is_active = false`. Citas no se borran: se cancelan.
+## 6. Tipos de Supabase
 
-### Códigos de error que la app traduce
+`src/types/supabase.ts` se genera del esquema. No ejecutar `npm run db:types`
+ni `db:types:remote` sin autorización: sin la configuración correcta de la
+CLI sobrescriben el archivo con un error. Si una migración cambia tablas o
+funciones: avisar a Eduardo → regenerar con el procedimiento autorizado →
+reemplazar el archivo completo → `typecheck`. Si hubo que editarlo a mano,
+decirlo en el reporte.
+
+## 7. Citas (Steps 9 y 9.1)
+
+**Estados:** `pending → confirmed → completed`; `pending|confirmed →
+cancelled|no_show`. Finales y sin reapertura: `completed`, `cancelled`,
+`no_show`. Lo hace cumplir el trigger `appointments_enforce_status_transition`
+en cualquier ruta.
+
+**Cambio de estado:** único flujo de la app: `changeAppointmentStatusAction`
+→ `public.set_appointment_status` (SECURITY INVOKER, `FOR UPDATE`). No
+cambiar estados con UPDATE directo desde una Server Action.
+
+**Creación:** `authenticated` no tiene INSERT en `appointments`; las citas
+nacen en `public.book_appointment`. Walk-ins u otras formas de crear citas
+requieren una función nueva y segura. No reabrir INSERT.
+
+**UPDATE:** `authenticated` solo puede actualizar `status` y
+`cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
+`client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
+`completed_at`, `cancelled_*`) no es editable por API, ni siquiera por el
+admin. Reprogramar, reasignar o editar cliente/nota exigen una función
+específica; nunca ampliar el UPDATE general.
+
+**Auditoría inmutable para todos** (incluido el SQL Editor): `id`,
+`tenant_id`, `source`, `created_at`, `created_by`, `completed_at`,
+`cancelled_at`, `cancelled_by`. El motivo de cancelación es obligatorio al
+cancelar (sin vacíos ni solo espacios, máximo 500) y no se reescribe después.
+
+**`appointment_services`:** al insertar, el servicio debe existir, ser de la
+misma barbería y estar activo; nombre, precio y duración salen del catálogo
+(lo enviado se ignora) y `commission_rate_bps` nace NULL. Las líneas de una
+cita completada no se insertan, modifican ni borran. UPDATE y DELETE solo
+admin, en citas no completadas. No ampliar sin un Step específico.
+
+## 8. Códigos de error que la app traduce
 
 | Código | Significado |
 |---|---|
 | `P0002` | no encontrado / fuera de alcance (sin distinguir) |
-| `P0003` | horario ya ocupado (reserva) |
+| `P0003` | horario ocupado |
 | `42501` | sin permiso / campo protegido |
 | `23503` | referencia inexistente en esa barbería |
 | `23514` | regla CHECK |
 | `BA001` | transición de estado no permitida (o cambió mientras tanto) |
 | `BA002` | motivo de cancelación faltante, vacío o > 500 |
 | `BA003` | servicio inactivo |
-| `BA004` | cita completada: sus servicios ya no cambian |
+| `BA004` | cita completada: servicios bloqueados |
 
-`P0003`/`P0004` están reservados por PostgreSQL (`P0004` no se puede capturar):
-para errores propios usar la clase `BA0xx`.
+Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
+puede capturar en PL/pgSQL).
 
-### Citas (Steps 9 y 9.1)
+## 9. Pruebas SQL
 
-- Estados: `pending → confirmed → completed`; `pending|confirmed →
-  cancelled|no_show`. Finales: `completed`, `cancelled`, `no_show`.
-  Lo hace cumplir el trigger `appointments_enforce_status_transition`.
-- El único cambio de estado de la app es
-  `changeAppointmentStatusAction` → `public.set_appointment_status`
-  (SECURITY INVOKER, `FOR UPDATE`).
-- `authenticated` **no tiene INSERT** en `appointments` y solo puede hacer
-  UPDATE de `status` y `cancellation_reason`. Las citas nacen en
-  `public.book_appointment` (reserva pública). Reprogramar, reasignar,
-  walk-ins o editar cliente/nota requieren **funciones nuevas con sus
-  propias validaciones**, no reabrir permisos.
-- Auditoría inmutable para todos (incluido el SQL Editor): `id`, `tenant_id`,
-  `source`, `created_*`, `completed_at`, `cancelled_*`.
-- `appointment_services`: nombre/precio/duración siempre del catálogo,
-  `commission_rate_bps` NULL al insertar, líneas de citas completadas
-  bloqueadas, DELETE solo admin.
+`supabase/tests/*.test.sql`: SQL plano, autocontenido, en una transacción que
+termina en `ROLLBACK`, con reporte PASS/FAIL. **Nunca contra el remoto.**
 
-### Tipos
+```
+psql "<url-local>" -v ON_ERROR_STOP=1 -f supabase/tests/<archivo>.test.sql
+```
 
-`src/types/supabase.ts` se genera desde el esquema. Si una migración agrega o
-cambia funciones/tablas, pide a Eduardo regenerarlo (o usa el generador del
-conector de Supabase) y reemplaza el archivo **completo**. Evita editarlo a
-mano; si fuera inevitable, dilo en el reporte.
+Requiere un Postgres local con todas las migraciones (`supabase start` con
+Docker, o Postgres con roles `anon`/`authenticated`, `auth.users` y
+`auth.uid()`). Sin base local, las pruebas SQL se reportan `NOT RUN`. Hoy el
+repo solo contiene `appointments_hardening.test.sql`; las suites anteriores
+(Step 9, horarios, integridad) aún no están en el repo.
 
----
+## 10. Interfaz
 
-## Pruebas
+- Estética dark luxury / premium barber studio, editorial y cinematográfica.
+  Probar ~390 px y ~820 px, sin scroll horizontal.
+- Solo tokens de `src/styles/tokens.css` (`bg-background`, `text-muted`,
+  `text-accent`, `p-[var(--spacing-card)]`…); sin colores arbitrarios.
+  Reutilizar `ui/Dialog`, `ui/Button`, `dashboard/*`.
+- GSAP solo vía `useGsapAnimation` y respetando `prefers-reduced-motion`.
+- Fotos de usuarios/barberos con `<img>`; no migrar a `next/image`.
 
-- `supabase/tests/*.test.sql`: SQL plano, autocontenido, en una transacción
-  con `ROLLBACK` y reporte PASS/FAIL. **Solo contra una base local o
-  desechable**, nunca contra el remoto:
-  `psql "<url-local>" -v ON_ERROR_STOP=1 -f supabase/tests/<archivo>.test.sql`
-- Requiere un Postgres local con todas las migraciones (`supabase start`, o
-  Postgres con roles `anon`/`authenticated`, `auth.users` y `auth.uid()`).
-- Todo cambio de base de datos lleva pruebas, incluidos los casos negativos
-  (otro barbero, otra barbería, sin sesión, API directa saltándose la app,
-  concurrencia cuando aplique). Correr también las suites existentes.
-- Si un cambio de comportamiento hace fallar una prueba antigua a propósito,
-  ajusta la expectativa y explícalo en el reporte; nunca la borres para que
-  pase.
+## 11. Pendientes conocidos (no corregir salvo que el Step lo pida)
 
----
-
-## Interfaz
-
-- Todo el texto de la UI en **español**. Estética dark luxury, mobile-first,
-  sin scroll horizontal (probar ~390 px y ~820 px).
-- Colores, tipografía y espaciado solo desde `src/styles/tokens.css`
-  (`bg-background`, `text-muted`, `text-accent`, `p-[var(--spacing-card)]`…).
-- Reutilizar componentes existentes (`ui/Dialog`, `ui/Button`, patrones de
-  `dashboard/*`). GSAP solo vía `useGsapAnimation` y respetando
-  `prefers-reduced-motion`.
-- Fotos de usuario con `<img>` (URLs arbitrarias), no `next/image`.
-- Fechas y horas siempre en la zona del tenant (helpers de
-  `lib/appointments.ts` y `lib/format.ts`), nunca la del navegador.
-- **No agregar dependencias** sin pedirlo.
-
----
-
-## Forma de trabajar
-
-1. Eduardo envía cada tarea como un "Step" con alcance y reglas. Si el Step
-   dice "solo inspección", **no modificar nada**.
-2. Inspeccionar antes de cambiar. Si algo exige un refactor grande o tocar la
-   arquitectura existente, **detenerse y preguntar**.
-3. **No ampliar el alcance** por iniciativa propia; reportar lo que se
-   encuentre como pendiente.
-4. Trabajar en una rama por Step (`step-<n>-<tema>`), nunca directo en `main`.
-5. **No hacer commit, push ni merge sin permiso explícito** en ese Step.
-6. Al terminar, reportar: archivos creados/modificados, migraciones, pruebas
-   y resultados reales, `lint` / `typecheck` / `build`, pendientes y
-   decisiones que Eduardo deba revisar. No inventar resultados.
-
----
-
-## Pendientes conocidos (no corregir salvo que el Step lo pida)
-
-- Historial de migraciones remoto desincronizado (9 vs 14); 6 funciones
-  remotas difieren del repo solo en comentarios.
-- `restrict_barber_self_update` bloquea cambios hechos desde la plataforma
-  (auth.uid() nulo) y al quitar la membresía de un barbero.
+- Historial de migraciones remoto desincronizado (§5).
+- `restrict_barber_self_update` bloquea cambios con `auth.uid()` nulo y al
+  quitar la membresía de un barbero.
 - `trg_protect_last_admin` impide purgar una barbería que aún tiene admin.
-- `my_barber_id` no revisa `is_active` (barbero desactivado conserva acceso).
+- `my_barber_id` no revisa `is_active`.
 - `activeMembership` toma la primera membresía sin orden fijo.
-- Barbero ve y crea clientes de toda la barbería.
-- Reservas públicas sin protección anti-spam ni límite de longitud en
-  nombre/nota; el nombre del cliente se sobrescribe por teléfono.
-- Citas `cancelled`/`no_show` aún aceptan servicios nuevos; agregar un
-  servicio no alarga `end_at`.
-- El admin puede ajustar precio/comisión de líneas de citas no completadas.
-- Completar / "No se presentó" no esperan a la hora de la cita.
-- Comisiones, walk-ins, reprogramación, reasignación, estadísticas: no
-  existen todavía.
+- El barbero ve y crea clientes de toda la barbería.
+- Reservas públicas sin anti-spam y con límites de longitud mejorables; el
+  nombre del cliente se sobrescribe por teléfono.
+- Citas `cancelled`/`no_show` aún aceptan servicios; agregar un servicio no
+  extiende `end_at`.
+- El admin puede ajustar precio/comisión de líneas no completadas.
+- Completar / `no_show` no esperan a la hora de la cita.
+- No existen todavía: walk-ins, reprogramación, reasignación, pagos/cobros,
+  comisiones, estadísticas, ganancias, notificaciones. El orden se decide
+  inspeccionando dependencias, no por suposición.
