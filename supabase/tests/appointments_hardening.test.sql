@@ -202,7 +202,9 @@ do $$
 declare _res jsonb; _id uuid; _a record; _l record;
   _start timestamptz := (((now() at time zone 'America/Mexico_City')::date + 1) + time '10:00') at time zone 'America/Mexico_City';
 begin
-  _res := public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000002',
+  -- ::uuid: desde Step 10.1 existe también la firma uuid[]; un literal sin
+  -- tipo en esa posición sería ambiguo (42725). Llama a la firma antigua.
+  _res := public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000002'::uuid,
                                   _start, 'Reserva Pública', '55 1234 5678', 'nota');
   _id := (_res->>'appointment_id')::uuid;
   perform pg_temp.as_postgres();
@@ -226,14 +228,14 @@ end $$;
 
 select pg_temp.as_user('a0000000-0000-0000-0000-000000000002');  -- un usuario con sesión también puede reservar
 select pg_temp.expect_ok('book_appointment (authenticated) funciona', $q$
-  select public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001',
+  select public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001'::uuid,
     (((now() at time zone 'America/Mexico_City')::date + 1) + time '12:00') at time zone 'America/Mexico_City',
     'Otra Persona', '5598765432', null)
 $q$);
 
 select pg_temp.as_user(null);
 select pg_temp.expect_error('book_appointment: el traslape sigue rechazado (P0003)', $q$
-  select public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001',
+  select public.book_appointment('test-kings', 'ba000000-0000-0000-0000-000000000001', '5a000000-0000-0000-0000-000000000001'::uuid,
     (((now() at time zone 'America/Mexico_City')::date + 1) + time '10:00') at time zone 'America/Mexico_City',
     'Choque', '5511112222', null)
 $q$, 'P0003');
