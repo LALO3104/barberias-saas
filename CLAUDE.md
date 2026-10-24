@@ -27,7 +27,8 @@ reservas y dashboard están desactualizadas: todo eso ya existe.
 El último commit y la última migración se consultan con `git log` y
 `supabase/migrations/`; no asumirlos. Steps cerrados al escribir esta guía:
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
-8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas).
+8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
+varios servicios por cita, horarios cada 5 min).
 
 ## 2. Stack y comandos
 
@@ -85,11 +86,16 @@ supabase/tests/                   pruebas SQL (§9)
 ## 5. Base de datos
 
 **Migraciones:** `YYYYMMDDHHMMSS_descripcion.sql`, posteriores a la última.
-**Eduardo aplica cada una a mano en el SQL Editor**; el agente solo verifica
-el remoto con consultas de lectura.
+Desde Step 10.1 Eduardo autoriza que el agente las aplique: probarlas antes en
+una base local (§9), pre-chequeo de solo lectura, aplicar cada archivo en una
+transacción explícita con `npx supabase db query --linked -f <archivo>`
+(`begin;` … `commit;` alrededor) y verificar con consultas de lectura. Nunca
+`supabase db push` ni la herramienta `apply_migration` (registran en
+`schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 14 migraciones; registradas en el
-remoto: 9; además 6 funciones difieren del repo solo en comentarios).
+**Historial remoto desincronizado** (repo: 17 migraciones, todas aplicadas;
+registradas en el remoto: 9; además algunas funciones difieren del repo solo
+en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
 de un Step dedicado. Las migraciones del repo son el esquema correcto.
 
@@ -154,7 +160,25 @@ cancelar (sin vacíos ni solo espacios, máximo 500) y no se reescribe después.
 misma barbería y estar activo; nombre, precio y duración salen del catálogo
 (lo enviado se ignora) y `commission_rate_bps` nace NULL. Las líneas de una
 cita completada no se insertan, modifican ni borran. UPDATE y DELETE solo
-admin, en citas no completadas. No ampliar sin un Step específico.
+admin, en citas no completadas. Máximo 5 líneas por cita (BA006) y un
+servicio a lo sumo una vez por cita (UNIQUE). No ampliar sin un Step específico.
+
+**Ocupación (Step 10.1):** `end_at` = fin estimado (inicio + suma de
+duraciones); `occupied_until` = hasta cuándo ocupa al barbero. Ocupación base
+`min(D, max(D − 10 min, 10 min))` (margen fijo de 10 min); al completar antes
+se acorta hasta `completed_at` (piso inicio + 1 min) y nunca crece. La calcula
+el trigger `appointments_occupancy` con `private.appointment_occupied_until`;
+es inmutable para todos. `appointments_no_overlap` usa
+`[start_at, occupied_until)`.
+
+**Reserva pública (Step 10.1):** `get_available_slots(…, _service_ids uuid[], …)`
+y `book_appointment(…, _service_ids uuid[], …)`: 1 a 5 servicios, rejilla de
+5 min en la zona del tenant, anticipación mínima de 15 min, lock por barbero
+(`private.lock_barber_agenda`) antes de revalidar. Helpers privados
+reutilizables para walk-ins: `resolve_booking_services`, `within_business_hours`,
+`within_barber_hours`, `overlaps_schedule_block`, `overlaps_active_appointment`.
+Las firmas viejas (`_service_id uuid`) son envoltorios temporales: eliminarlas
+en una migración cuando nada las use.
 
 ## 8. Códigos de error que la app traduce
 
@@ -169,6 +193,7 @@ admin, en citas no completadas. No ampliar sin un Step específico.
 | `BA002` | motivo de cancelación faltante, vacío o > 500 |
 | `BA003` | servicio inactivo |
 | `BA004` | cita completada: servicios bloqueados |
+| `BA006` | más de 5 servicios en una cita |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -183,13 +208,18 @@ psql "<url-local>" -v ON_ERROR_STOP=1 -f supabase/tests/<archivo>.test.sql
 ```
 
 Requiere un Postgres local con todas las migraciones (`supabase start` con
-Docker, o Postgres con roles `anon`/`authenticated`, `auth.users` y
-`auth.uid()`). Sin base local, las pruebas SQL se reportan `NOT RUN`. Hoy el
-repo solo contiene `appointments_hardening.test.sql`; las suites anteriores
-(Step 9, horarios, integridad) aún no están en el repo.
+Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
+`auth.users` y `auth.uid()`). Sin Docker funciona PostgreSQL 17 portable (zip
+de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
+local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
+`appointments_hardening`, `appointment_occupancy`, `multi_service_booking`;
+las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
 
+- Horas siempre en 24 h (`09:30`), en la zona del tenant.
+- Curvas de movimiento en tokens (`ease-out`, `ease-in-out` en `tokens.css`);
+  controles con estado `active:` al presionar.
 - Estética dark luxury / premium barber studio, editorial y cinematográfica.
   Probar ~390 px y ~820 px, sin scroll horizontal.
 - Solo tokens de `src/styles/tokens.css` (`bg-background`, `text-muted`,

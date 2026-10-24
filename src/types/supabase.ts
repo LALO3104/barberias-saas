@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -88,6 +88,7 @@ export type Database = {
           created_by: string | null
           end_at: string
           id: string
+          occupied_until: string
           source: Database["public"]["Enums"]["appointment_source"]
           start_at: string
           status: Database["public"]["Enums"]["appointment_status"]
@@ -106,6 +107,7 @@ export type Database = {
           created_by?: string | null
           end_at: string
           id?: string
+          occupied_until: string
           source: Database["public"]["Enums"]["appointment_source"]
           start_at: string
           status?: Database["public"]["Enums"]["appointment_status"]
@@ -124,6 +126,7 @@ export type Database = {
           created_by?: string | null
           end_at?: string
           id?: string
+          occupied_until?: string
           source?: Database["public"]["Enums"]["appointment_source"]
           start_at?: string
           status?: Database["public"]["Enums"]["appointment_status"]
@@ -640,29 +643,54 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      book_appointment: {
-        Args: {
-          _barber_id: string
-          _client_name: string
-          _client_note?: string
-          _client_phone: string
-          _service_id: string
-          _slug: string
-          _start_at: string
-        }
-        Returns: Json
-      }
-      get_available_slots: {
-        Args: {
-          _barber_id: string
-          _service_id: string
-          _slug: string
-          _target_date: string
-        }
-        Returns: {
-          slot_start: string
-        }[]
-      }
+      book_appointment:
+        | {
+            Args: {
+              _barber_id: string
+              _client_name: string
+              _client_note?: string
+              _client_phone: string
+              _service_id: string
+              _slug: string
+              _start_at: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              _barber_id: string
+              _client_name: string
+              _client_note?: string
+              _client_phone: string
+              _service_ids: string[]
+              _slug: string
+              _start_at: string
+            }
+            Returns: Json
+          }
+      get_available_slots:
+        | {
+            Args: {
+              _barber_id: string
+              _service_id: string
+              _slug: string
+              _target_date: string
+            }
+            Returns: {
+              slot_start: string
+            }[]
+          }
+        | {
+            Args: {
+              _barber_id: string
+              _service_ids: string[]
+              _slug: string
+              _target_date: string
+            }
+            Returns: {
+              slot_start: string
+            }[]
+          }
       get_public_tenant: { Args: { _slug: string }; Returns: Json }
       set_appointment_status: {
         Args: {

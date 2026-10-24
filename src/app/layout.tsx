@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +22,12 @@ const playfairDisplay = Playfair_Display({
 export const metadata: Metadata = {
   title: "Barberías — Base técnica",
   description: "Proyecto SaaS para barberías (en construcción).",
+};
+
+/** Barra de estado y del navegador en móvil del mismo color que el fondo
+ *  (--color-background en src/styles/tokens.css). */
+export const viewport: Viewport = {
+  themeColor: "#0b0b0b",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

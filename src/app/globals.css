@@ -17,6 +17,27 @@
     scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: var(--color-border) transparent;
+    /* Móvil: sin el destello gris/azul al tocar (cada control tiene su
+       propio estado :active) y sin inflar el texto en horizontal. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Móvil: el toque responde al instante (sin espera de doble toque) y una
+     pulsación larga no selecciona el texto de un control. Los enlaces siguen
+     siendo seleccionables: pueden ser contenido. */
+  button,
+  a,
+  [role="button"],
+  [role="radio"] {
+    touch-action: manipulation;
+  }
+
+  button,
+  [role="button"],
+  [role="radio"] {
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   body {

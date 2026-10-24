@@ -34,16 +34,16 @@ export function formatDuration(minutes: number): string {
 }
 
 /**
- * Formatea un timestamptz ISO a hora local en la timezone del tenant.
- * Ejemplo: formatSlotTime("2026-10-03T15:30:00Z", "America/Mexico_City") → "9:30 AM"
+ * Formatea un timestamptz ISO a hora local (24 h) en la timezone del tenant.
+ * Ejemplo: formatSlotTime("2026-10-03T15:30:00Z", "America/Mexico_City") → "09:30"
  */
 export function formatSlotTime(isoString: string, timezone: string): string {
   const date = new Date(isoString);
   return date.toLocaleTimeString("es-MX", {
     timeZone: timezone,
-    hour: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
+    hourCycle: "h23",
   });
 }
 
@@ -230,16 +230,12 @@ const DAY_NAMES: Record<number, string> = {
 };
 
 /**
- * Formatea un horario time (HH:MM:SS) a formato legible.
- * Ejemplo: formatTimeString("09:00:00") → "9:00 AM"
+ * Formatea un horario time (HH:MM:SS) a 24 h.
+ * Ejemplo: formatTimeString("09:00:00") → "09:00"
  */
 function formatTimeString(time: string): string {
   const [h, m] = time.split(":");
-  const hour = parseInt(h, 10);
-  const minute = m ?? "00";
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  return `${h12}:${minute} ${ampm}`;
+  return `${h.padStart(2, "0")}:${(m ?? "00").padStart(2, "0")}`;
 }
 
 /**

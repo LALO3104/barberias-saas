@@ -66,48 +66,6 @@ export async function fetchPublicTenant(
 /** Máximo de servicios por cita (el backend también lo valida). */
 export const MAX_SERVICES_PER_BOOKING = 5;
 
-/*
- * TODO(Step 10.1): quitar al regenerar tipos.
- *
- * `src/types/supabase.ts` todavía tiene las firmas antiguas de
- * `get_available_slots` y `book_appointment` (con `_service_id`). Hasta
- * regenerarlo, esas dos RPC se llaman a través de esta interfaz mínima con
- * los argumentos nuevos (`_service_ids`). El cast vive SOLO aquí, sin `any`:
- * los argumentos quedan tipados con el contrato del backend y la respuesta
- * se trata como `unknown` hasta mapearla a `@/types/public`.
- */
-interface AvailableSlotsArgs {
-  _slug: string;
-  _barber_id: string;
-  _service_ids: string[];
-  _target_date: string; // YYYY-MM-DD
-}
-
-interface BookAppointmentArgs {
-  _slug: string;
-  _barber_id: string;
-  _service_ids: string[];
-  _start_at: string;
-  _client_name: string;
-  _client_phone: string;
-  _client_note?: string;
-}
-
-interface RpcResult {
-  data: unknown;
-  error: PostgrestError | null;
-}
-
-interface MultiServiceRpcClient {
-  rpc(fn: "get_available_slots", args: AvailableSlotsArgs): PromiseLike<RpcResult>;
-  rpc(fn: "book_appointment", args: BookAppointmentArgs): PromiseLike<RpcResult>;
-}
-
-function multiServiceRpc(client: Client): MultiServiceRpcClient {
-  // Se devuelve el mismo cliente (no el método suelto) para conservar `this`.
-  return client as unknown as MultiServiceRpcClient;
-}
-
 const INVALID_SERVICES_MESSAGE =
   "La selección de servicios no es válida. Elige de 1 a 5 servicios distintos.";
 
@@ -153,7 +111,7 @@ export async function fetchAvailableSlots(
 ): Promise<AvailableSlot[]> {
   assertValidServiceIds(serviceIds);
 
-  const { data, error } = await multiServiceRpc(client).rpc(
+  const { data, error } = await client.rpc(
     "get_available_slots",
     {
       _slug: slug,
@@ -199,7 +157,7 @@ export async function bookAppointment(
 ): Promise<BookingConfirmation> {
   assertValidServiceIds(params.serviceIds);
 
-  const { data, error } = await multiServiceRpc(client).rpc(
+  const { data, error } = await client.rpc(
     "book_appointment",
     {
       _slug: params.slug,
@@ -217,6 +175,18 @@ export async function bookAppointment(
       throw new PublicApiError(
         "Este horario acaba de ser reservado. Selecciona otro horario.",
         error.code
+      );
+    }
+    // El horario entró en la ventana mínima de anticipación mientras el
+    // cliente llenaba sus datos: se trata como horario ya no disponible para
+    // que el wizard recargue los horarios.
+    if (
+      error.code === ERROR_CODES.VALIDATION &&
+      (error.message ?? "").toLowerCase().includes("anticipación")
+    ) {
+      throw new PublicApiError(
+        "Ese horario ya no está disponible. Selecciona otro horario.",
+        ERROR_CODES.SLOT_TAKEN
       );
     }
     if (error.code === ERROR_CODES.NOT_FOUND) {
@@ -238,5 +208,5 @@ export async function bookAppointment(
     );
   }
 
-  return data as BookingConfirmation;
+  return data as unknown as BookingConfirmation;
 }

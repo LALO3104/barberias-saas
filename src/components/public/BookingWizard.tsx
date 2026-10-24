@@ -447,7 +447,7 @@ function StepBarber({
             type="button"
             onClick={() => onSelect(barber.id)}
             className={cn(
-              "flex items-center gap-4 rounded-card border p-4 text-left transition-all",
+              "flex items-center gap-4 rounded-card border p-4 text-left transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.98]",
               "hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               selectedId === barber.id
                 ? "border-accent bg-accent/5"
@@ -537,12 +537,12 @@ function StepService({
                   if (!isBlocked) onToggle(service.id);
                 }}
                 className={cn(
-                  "flex w-full items-center gap-4 rounded-sm px-2 py-4 text-left transition-colors",
+                  "flex w-full items-center gap-4 rounded-sm px-2 py-4 text-left transition-colors duration-150 ease-out",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
                   isSelected && "bg-accent/5",
                   isBlocked
                     ? "cursor-not-allowed opacity-50"
-                    : "cursor-pointer hover:bg-accent/5"
+                    : "cursor-pointer hover:bg-accent/5 active:bg-accent/10"
                 )}
               >
                 {/* Indicador: número de orden cuando está elegido */}
@@ -708,7 +708,7 @@ function StepDateTime({
                 aria-checked={selectedDate === d.value}
                 onClick={() => onSelectDate(d.value)}
                 className={cn(
-                  "flex shrink-0 flex-col items-center rounded-card border px-4 py-3 transition-all",
+                  "flex shrink-0 flex-col items-center rounded-card border px-4 py-3 transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97]",
                   "hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
                   selectedDate === d.value
                     ? "border-accent bg-accent/10 text-accent"
@@ -894,7 +894,7 @@ function ChoiceRadioGroup({
             onClick={() => onChange(option.value)}
             onKeyDown={(e) => handleKeyDown(e, i)}
             className={cn(
-              "flex min-h-11 min-w-0 flex-col items-center justify-center rounded-button border px-2 py-2.5 text-sm font-sans font-medium tabular-nums transition-all",
+              "flex min-h-11 min-w-0 flex-col items-center justify-center rounded-button border px-2 py-2.5 text-sm font-sans font-medium tabular-nums transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97]",
               "hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
               checked
                 ? variant === "minute"
