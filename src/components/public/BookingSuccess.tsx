@@ -20,6 +20,17 @@ function getBarberName(
   return barber?.display_name ?? "—";
 }
 
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <dt className="text-label font-sans uppercase tracking-label text-muted">
+        {label}
+      </dt>
+      <dd className="text-right text-body font-sans text-foreground">{value}</dd>
+    </div>
+  );
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 interface BookingSuccessProps {
@@ -34,22 +45,35 @@ interface BookingSuccessProps {
  * Muestra "Reserva recibida" (NO "Cita confirmada" — la cita queda en
  * estado pending hasta que la barbería la apruebe manualmente).
  *
- * Muestra: barbería, barbero, servicio, precio, duración, fecha, hora,
- * nombre del cliente, y una nota explicando el estado pendiente.
+ * Muestra: barbería, barbero, servicios (con precio y duración de cada
+ * uno), totales, fecha, hora, nombre del cliente, y una nota explicando el
+ * estado pendiente. Todo sale de la respuesta de book_appointment.
  */
 export function BookingSuccess({
   confirmation,
   tenant,
   onNewBooking,
 }: BookingSuccessProps) {
-  const { service, start_at, client, barber_id } = confirmation;
+  const {
+    services,
+    total_price_cents,
+    total_duration_minutes,
+    start_at,
+    client,
+    barber_id,
+  } = confirmation;
 
-  const rows: { label: string; value: string }[] = [
+  // Orden de la cita según el backend.
+  const orderedServices = [...services].sort((a, b) => a.position - b.position);
+
+  const rowsBefore: { label: string; value: string }[] = [
     { label: "Barbería", value: tenant.name },
     { label: "Barbero", value: getBarberName(tenant, barber_id) },
-    { label: "Servicio", value: service.name },
-    { label: "Precio", value: formatPrice(service.price_cents, tenant.currency) },
-    { label: "Duración", value: formatDuration(service.duration_minutes) },
+  ];
+
+  const rowsAfter: { label: string; value: string }[] = [
+    { label: "Duración total", value: formatDuration(total_duration_minutes) },
+    { label: "Precio total", value: formatPrice(total_price_cents, tenant.currency) },
     { label: "Fecha", value: formatSlotDate(start_at, tenant.timezone) },
     { label: "Hora", value: formatSlotTime(start_at, tenant.timezone) },
     { label: "Cliente", value: client.name },
@@ -90,18 +114,36 @@ export function BookingSuccess({
         {/* ── Detalle de la reserva ──────────────────────────── */}
         <div className="mt-8 rounded-card border border-border bg-background-secondary p-6">
           <dl className="divide-y divide-border">
-            {rows.map(({ label, value }) => (
-              <div
-                key={label}
-                className="flex items-baseline justify-between gap-4 py-3 first:pt-0 last:pb-0"
-              >
-                <dt className="text-label font-sans uppercase tracking-label text-muted">
-                  {label}
-                </dt>
-                <dd className="text-right text-body font-sans text-foreground">
-                  {value}
-                </dd>
-              </div>
+            {rowsBefore.map((row) => (
+              <DetailRow key={row.label} {...row} />
+            ))}
+            <div className="py-3">
+              <dt className="text-label font-sans uppercase tracking-label text-muted">
+                {orderedServices.length === 1 ? "Servicio" : "Servicios"}
+              </dt>
+              <dd className="mt-2">
+                <ol className="space-y-2">
+                  {orderedServices.map((s) => (
+                    <li
+                      key={`${s.position}-${s.id}`}
+                      className="flex items-baseline justify-between gap-4 text-body font-sans"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-foreground">{s.name}</span>
+                        <span className="block text-sm text-muted">
+                          {formatDuration(s.duration_minutes)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-foreground">
+                        {formatPrice(s.price_cents, tenant.currency)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </dd>
+            </div>
+            {rowsAfter.map((row) => (
+              <DetailRow key={row.label} {...row} />
             ))}
           </dl>
         </div>

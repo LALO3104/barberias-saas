@@ -1,19 +1,30 @@
 "use client";
 
 import Image from "next/image";
-import { useReducer, useCallback, useRef, useEffect } from "react";
+import {
+  useReducer,
+  useCallback,
+  useRef,
+  useEffect,
+  useId,
+  useMemo,
+  type KeyboardEvent,
+} from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
   fetchAvailableSlots,
   bookAppointment,
   PublicApiError,
   ERROR_CODES,
+  MAX_SERVICES_PER_BOOKING,
 } from "@/lib/public-api";
 import {
   formatPrice,
   formatDuration,
   formatSlotTime,
+  formatSlotDate,
   getUpcomingDates,
+  groupSlotsByHour,
 } from "@/lib/format";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
@@ -26,7 +37,7 @@ type Step = (typeof STEPS)[number];
 
 const STEP_LABELS: Record<Step, string> = {
   barbero: "Barbero",
-  servicio: "Servicio",
+  servicio: "Servicios",
   fecha: "Fecha y hora",
   datos: "Tus datos",
   confirmar: "Confirmar",
@@ -37,8 +48,11 @@ const STEP_LABELS: Record<Step, string> = {
 interface WizardState {
   step: Step;
   barberId: string | null;
-  serviceId: string | null;
+  /** Servicios elegidos, en el orden en que el cliente los eligió (1 a 5). */
+  serviceIds: string[];
   date: string | null; // YYYY-MM-DD
+  /** Grupo de hora elegido (`SlotHourGroup.key`). */
+  hourKey: string | null;
   slotStart: string | null; // timestamptz ISO
   slots: string[]; // timestamptz ISO array
   slotsLoading: boolean;
@@ -52,9 +66,12 @@ interface WizardState {
 
 type WizardAction =
   | { type: "SELECT_BARBER"; barberId: string }
-  | { type: "SELECT_SERVICE"; serviceId: string }
+  | { type: "TOGGLE_SERVICE"; serviceId: string }
+  | { type: "CONFIRM_SERVICES" }
   | { type: "SELECT_DATE"; date: string }
+  | { type: "SELECT_HOUR"; hourKey: string }
   | { type: "SELECT_SLOT"; slotStart: string }
+  | { type: "CONFIRM_SLOT" }
   | { type: "SET_CLIENT_NAME"; value: string }
   | { type: "SET_CLIENT_PHONE"; value: string }
   | { type: "SET_CLIENT_NOTE"; value: string }
@@ -69,8 +86,9 @@ type WizardAction =
 const initialState: WizardState = {
   step: "barbero",
   barberId: null,
-  serviceId: null,
+  serviceIds: [],
   date: null,
+  hourKey: null,
   slotStart: null,
   slots: [],
   slotsLoading: false,
@@ -82,38 +100,61 @@ const initialState: WizardState = {
   submitError: null,
 };
 
+/**
+ * Cambiar barbero, servicios o fecha invalida la hora, el minuto y los
+ * horarios cargados: se vuelven a pedir al backend al llegar a "fecha".
+ */
+const CLEARED_SLOTS = {
+  hourKey: null,
+  slotStart: null,
+  slots: [],
+  slotsError: null,
+} satisfies Partial<WizardState>;
+
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
     case "SELECT_BARBER":
       return {
         ...state,
+        ...CLEARED_SLOTS,
         barberId: action.barberId,
-        // Limpiar slots al cambiar barbero (spec §19)
-        slotStart: null,
-        slots: [],
-        slotsError: null,
         step: "servicio",
       };
-    case "SELECT_SERVICE":
+    case "TOGGLE_SERVICE": {
+      const isSelected = state.serviceIds.includes(action.serviceId);
+      if (!isSelected && state.serviceIds.length >= MAX_SERVICES_PER_BOOKING) {
+        // Límite alcanzado: la UI ya muestra el aviso; no se agrega.
+        return state;
+      }
       return {
         ...state,
-        serviceId: action.serviceId,
-        // Limpiar slots al cambiar servicio (spec §20)
-        slotStart: null,
-        slots: [],
-        slotsError: null,
-        step: "fecha",
+        ...CLEARED_SLOTS,
+        serviceIds: isSelected
+          ? state.serviceIds.filter((id) => id !== action.serviceId)
+          : [...state.serviceIds, action.serviceId],
       };
+    }
+    case "CONFIRM_SERVICES":
+      if (state.serviceIds.length === 0) return state;
+      return { ...state, step: "fecha", submitError: null };
     case "SELECT_DATE":
       return {
         ...state,
+        ...CLEARED_SLOTS,
         date: action.date,
-        slotStart: null,
-        slots: [],
-        slotsError: null,
+      };
+    case "SELECT_HOUR":
+      return {
+        ...state,
+        hourKey: action.hourKey,
+        // Elegir otra hora obliga a elegir de nuevo el minuto.
+        slotStart: state.hourKey === action.hourKey ? state.slotStart : null,
       };
     case "SELECT_SLOT":
-      return { ...state, slotStart: action.slotStart, step: "datos" };
+      return { ...state, slotStart: action.slotStart };
+    case "CONFIRM_SLOT":
+      if (!state.slotStart) return state;
+      return { ...state, step: "datos", submitError: null };
     case "SET_CLIENT_NAME":
       return { ...state, clientName: action.value };
     case "SET_CLIENT_PHONE":
@@ -124,16 +165,35 @@ function wizardReducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, step: action.step, submitError: null };
     case "SLOTS_LOADING":
       return { ...state, slotsLoading: true, slotsError: null };
-    case "SLOTS_LOADED":
-      return { ...state, slotsLoading: false, slots: action.slots };
+    case "SLOTS_LOADED": {
+      // Al recargar (p. ej. al volver de "Tus datos"), la selección solo se
+      // conserva si el backend sigue ofreciendo exactamente ese horario.
+      const keep =
+        state.slotStart !== null && action.slots.includes(state.slotStart);
+      return {
+        ...state,
+        slotsLoading: false,
+        slots: action.slots,
+        hourKey: keep ? state.hourKey : null,
+        slotStart: keep ? state.slotStart : null,
+      };
+    }
     case "SLOTS_ERROR":
-      return { ...state, slotsLoading: false, slotsError: action.error, slots: [] };
+      return {
+        ...state,
+        slotsLoading: false,
+        slotsError: action.error,
+        slots: [],
+        hourKey: null,
+        slotStart: null,
+      };
     case "SUBMIT_START":
       return { ...state, submitting: true, submitError: null };
     case "SUBMIT_ERROR":
       return { ...state, submitting: false, submitError: action.error };
     case "REFRESH_SLOTS":
-      return { ...state, slotStart: null, slots: [], step: "fecha" };
+      // Volver a "fecha" dispara una nueva consulta de horarios.
+      return { ...state, ...CLEARED_SLOTS, step: "fecha" };
     default:
       return state;
   }
@@ -152,16 +212,24 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
   const sectionRef = useRef<HTMLDivElement>(null);
 
   const selectedBarber = tenant.barbers.find((b) => b.id === state.barberId);
-  const selectedService = tenant.services.find((s) => s.id === state.serviceId);
+  const selectedServices = pickServices(tenant.services, state.serviceIds);
   const dates = getUpcomingDates(tenant.timezone, 14);
 
-  // ── Fetch slots when date changes ────────────────────────────────────────
+  // ── Fetch slots ──────────────────────────────────────────────────────────
+  // Se piden al estar en el paso "fecha" y cada vez que cambian barbero,
+  // servicios o fecha. Los UUID no contienen comas: la clave es estable.
+  const serviceKey = state.serviceIds.join(",");
+  const wantsSlots = state.step === "fecha";
+
   useEffect(() => {
-    if (!state.barberId || !state.serviceId || !state.date) return;
+    if (!wantsSlots || !state.barberId || !serviceKey || !state.date) return;
 
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
+    const barberId = state.barberId;
+    const date = state.date;
+    const serviceIds = serviceKey.split(",");
     let cancelled = false;
 
     async function loadSlots() {
@@ -170,9 +238,9 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
         const slots = await fetchAvailableSlots(
           supabase!,
           tenant.slug,
-          state.barberId!,
-          state.serviceId!,
-          state.date!
+          barberId,
+          serviceIds,
+          date
         );
         if (!cancelled) {
           dispatch({
@@ -197,11 +265,11 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
     return () => {
       cancelled = true;
     };
-  }, [state.barberId, state.serviceId, state.date, tenant.slug]);
+  }, [wantsSlots, state.barberId, serviceKey, state.date, tenant.slug]);
 
   // ── Submit booking ───────────────────────────────────────────────────────
   const handleSubmit = useCallback(async () => {
-    if (!state.barberId || !state.serviceId || !state.slotStart) return;
+    if (!state.barberId || state.serviceIds.length === 0 || !state.slotStart) return;
     if (!state.clientName.trim() || !state.clientPhone.trim()) return;
 
     const supabase = getSupabaseClient();
@@ -212,7 +280,7 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
       const confirmation = await bookAppointment(supabase, {
         slug: tenant.slug,
         barberId: state.barberId,
-        serviceId: state.serviceId,
+        serviceIds: state.serviceIds,
         startAt: state.slotStart,
         clientName: state.clientName.trim(),
         clientPhone: state.clientPhone.trim(),
@@ -292,9 +360,10 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
         {state.step === "servicio" && (
           <StepService
             services={tenant.services}
-            selectedId={state.serviceId}
+            selectedIds={state.serviceIds}
             currency={currency}
-            onSelect={(id) => dispatch({ type: "SELECT_SERVICE", serviceId: id })}
+            onToggle={(id) => dispatch({ type: "TOGGLE_SERVICE", serviceId: id })}
+            onContinue={() => dispatch({ type: "CONFIRM_SERVICES" })}
             onBack={() => dispatch({ type: "GO_TO_STEP", step: "barbero" })}
           />
         )}
@@ -304,12 +373,16 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
             dates={dates}
             selectedDate={state.date}
             slots={state.slots}
+            selectedHour={state.hourKey}
             selectedSlot={state.slotStart}
             timezone={tenant.timezone}
             loading={state.slotsLoading}
             error={state.slotsError}
+            notice={state.submitError}
             onSelectDate={(d) => dispatch({ type: "SELECT_DATE", date: d })}
+            onSelectHour={(h) => dispatch({ type: "SELECT_HOUR", hourKey: h })}
             onSelectSlot={(s) => dispatch({ type: "SELECT_SLOT", slotStart: s })}
+            onContinue={() => dispatch({ type: "CONFIRM_SLOT" })}
             onBack={() => dispatch({ type: "GO_TO_STEP", step: "servicio" })}
           />
         )}
@@ -330,7 +403,7 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
         {state.step === "confirmar" && (
           <StepConfirm
             barber={selectedBarber!}
-            service={selectedService!}
+            services={selectedServices}
             slotStart={state.slotStart!}
             timezone={tenant.timezone}
             currency={currency}
@@ -416,56 +489,138 @@ function StepBarber({
 
 function StepService({
   services,
-  selectedId,
+  selectedIds,
   currency,
-  onSelect,
+  onToggle,
+  onContinue,
   onBack,
 }: {
   services: PublicService[];
-  selectedId: string | null;
+  selectedIds: string[];
   currency: string;
-  onSelect: (id: string) => void;
+  onToggle: (id: string) => void;
+  onContinue: () => void;
   onBack: () => void;
 }) {
+  const headingId = useId();
+  const selected = pickServices(services, selectedIds);
+  const totals = sumServices(selected);
+  const count = selectedIds.length;
+  const limitReached = count >= MAX_SERVICES_PER_BOOKING;
+
   return (
     <div>
       <div className="flex items-center gap-3">
         <BackButton onClick={onBack} />
-        <h3 className="text-lg font-display text-foreground">
-          Elige el servicio
+        <h3 id={headingId} className="text-lg font-display text-foreground">
+          Elige tus servicios
         </h3>
       </div>
       <p className="mt-1 text-body font-sans text-muted">
-        ¿Qué servicio necesitas?
+        Puedes combinar hasta {MAX_SERVICES_PER_BOOKING} servicios en una misma
+        cita. Se realizan en el orden en que los elijas.
       </p>
-      <div className="mt-6 space-y-0">
-        {services.map((service) => (
-          <button
-            key={service.id}
-            type="button"
-            onClick={() => onSelect(service.id)}
-            className={cn(
-              "flex w-full items-center justify-between gap-4 border-b border-border px-2 py-4 text-left transition-colors last:border-b-0",
-              "hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary rounded-sm",
-              selectedId === service.id && "bg-accent/5"
-            )}
-          >
-            <div className="min-w-0">
-              <p className="font-display text-foreground">{service.name}</p>
-              {service.description && (
-                <p className="mt-0.5 text-sm font-sans text-muted truncate">
-                  {service.description}
-                </p>
-              )}
-              <p className="mt-1 text-label font-sans uppercase tracking-label text-muted">
-                {formatDuration(service.duration_minutes)}
+
+      <ul className="mt-6" aria-labelledby={headingId}>
+        {services.map((service) => {
+          const position = selectedIds.indexOf(service.id) + 1;
+          const isSelected = position > 0;
+          const isBlocked = !isSelected && limitReached;
+
+          return (
+            <li key={service.id} className="border-b border-border last:border-b-0">
+              <button
+                type="button"
+                aria-pressed={isSelected}
+                aria-disabled={isBlocked || undefined}
+                onClick={() => {
+                  if (!isBlocked) onToggle(service.id);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-4 rounded-sm px-2 py-4 text-left transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
+                  isSelected && "bg-accent/5",
+                  isBlocked
+                    ? "cursor-not-allowed opacity-50"
+                    : "cursor-pointer hover:bg-accent/5"
+                )}
+              >
+                {/* Indicador: número de orden cuando está elegido */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-button border text-xs font-sans font-medium transition-colors",
+                    isSelected
+                      ? "border-accent bg-accent text-background"
+                      : "border-border text-transparent"
+                  )}
+                >
+                  {isSelected ? position : ""}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-display text-foreground">
+                    {service.name}
+                  </span>
+                  {service.description && (
+                    <span className="mt-0.5 block truncate text-sm font-sans text-muted">
+                      {service.description}
+                    </span>
+                  )}
+                  <span className="mt-1 block text-label font-sans uppercase tracking-label text-muted">
+                    {formatDuration(service.duration_minutes)}
+                  </span>
+                  {isSelected && (
+                    <span className="sr-only">
+                      {`, servicio ${position} de la cita`}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-lg font-display text-accent">
+                  {formatPrice(service.price_cents, currency)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {/* Resumen de la selección */}
+      <div className="mt-6 rounded-card border border-border bg-background px-5 py-4">
+        <div aria-live="polite" aria-atomic="true">
+          {count === 0 ? (
+            <p className="text-body font-sans text-muted">
+              Aún no eliges ningún servicio.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="text-label font-sans uppercase tracking-label text-muted">
+                {count} de {MAX_SERVICES_PER_BOOKING}{" "}
+                {count === 1 ? "servicio" : "servicios"} ·{" "}
+                {formatDuration(totals.durationMinutes)}
+              </p>
+              <p className="text-lg font-display text-accent">
+                {formatPrice(totals.priceCents, currency)}
               </p>
             </div>
-            <span className="shrink-0 text-lg font-display text-accent">
-              {formatPrice(service.price_cents, currency)}
-            </span>
-          </button>
-        ))}
+          )}
+          {limitReached && (
+            <p className="mt-2 text-sm font-sans text-accent">
+              Llegaste al máximo de {MAX_SERVICES_PER_BOOKING} servicios por
+              cita. Quita uno para agregar otro.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <Button
+          type="button"
+          size="lg"
+          disabled={count === 0}
+          onClick={onContinue}
+        >
+          Continuar
+        </Button>
       </div>
     </div>
   );
@@ -477,25 +632,46 @@ function StepDateTime({
   dates,
   selectedDate,
   slots,
+  selectedHour,
   selectedSlot,
   timezone,
   loading,
   error,
+  notice,
   onSelectDate,
+  onSelectHour,
   onSelectSlot,
+  onContinue,
   onBack,
 }: {
   dates: { value: string; label: string; isToday: boolean }[];
   selectedDate: string | null;
   slots: string[];
+  selectedHour: string | null;
   selectedSlot: string | null;
   timezone: string;
   loading: boolean;
   error: string | null;
+  /** Aviso de un intento de reserva fallido (p. ej. horario ocupado). */
+  notice: string | null;
   onSelectDate: (date: string) => void;
+  onSelectHour: (hourKey: string) => void;
   onSelectSlot: (slot: string) => void;
+  onContinue: () => void;
   onBack: () => void;
 }) {
+  const hoursLabelId = useId();
+  const minutesLabelId = useId();
+
+  // Solo agrupa lo que devolvió el backend; no calcula disponibilidad.
+  const hourGroups = useMemo(
+    () => groupSlotsByHour(slots, timezone),
+    [slots, timezone]
+  );
+  const activeGroup = hourGroups.find((g) => g.key === selectedHour) ?? null;
+  const selectedMinute =
+    activeGroup?.slots.find((s) => s.iso === selectedSlot) ?? null;
+
   return (
     <div>
       <div className="flex items-center gap-3">
@@ -505,8 +681,17 @@ function StepDateTime({
         </h3>
       </div>
       <p className="mt-1 text-body font-sans text-muted">
-        Elige un día y después selecciona el horario disponible.
+        Elige un día, después la hora y por último los minutos.
       </p>
+
+      {notice && (
+        <p
+          className="mt-4 rounded-card border border-accent/20 bg-accent/5 px-5 py-3 text-sm font-sans text-accent"
+          role="alert"
+        >
+          {notice}
+        </p>
+      )}
 
       {/* Date picker — horizontal scroll */}
       <div className="mt-6">
@@ -544,11 +729,14 @@ function StepDateTime({
         </fieldset>
       </div>
 
-      {/* Time slots */}
+      {/* Horarios: hora → minutos */}
       {selectedDate && (
         <div className="mt-6">
-          <p className="text-label font-sans uppercase tracking-label text-muted mb-3">
-            Horarios disponibles
+          <p
+            id={hoursLabelId}
+            className="text-label font-sans uppercase tracking-label text-muted mb-3"
+          >
+            Elige la hora
           </p>
           {loading && (
             <div className="flex items-center gap-3 py-8 text-body font-sans text-muted">
@@ -561,35 +749,174 @@ function StepDateTime({
               {error}
             </p>
           )}
-          {!loading && !error && slots.length === 0 && (
+          {!loading && !error && hourGroups.length === 0 && (
             <p className="py-8 text-body font-sans text-muted">
               No hay horarios disponibles para este día. Prueba con otra fecha.
             </p>
           )}
-          {!loading && !error && slots.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6" role="radiogroup">
-              {slots.map((slot) => (
-                <button
-                  key={slot}
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedSlot === slot}
-                  onClick={() => onSelectSlot(slot)}
-                  className={cn(
-                    "rounded-button border px-3 py-2.5 text-sm font-sans font-medium transition-all",
-                    "hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
-                    selectedSlot === slot
-                      ? "border-accent bg-accent text-background"
-                      : "border-border text-foreground"
-                  )}
-                >
-                  {formatSlotTime(slot, timezone)}
-                </button>
-              ))}
-            </div>
+          {!loading && !error && hourGroups.length > 0 && (
+            <>
+              <ChoiceRadioGroup
+                labelId={hoursLabelId}
+                value={selectedHour}
+                onChange={onSelectHour}
+                variant="hour"
+                options={hourGroups.map((g) => {
+                  const n = g.slots.length;
+                  const countLabel = `${n} ${n === 1 ? "horario" : "horarios"}`;
+                  return {
+                    value: g.key,
+                    label: g.hourLabel,
+                    sublabel: countLabel,
+                    ariaLabel: `${g.hourLabel}, ${countLabel} disponibles`,
+                  };
+                })}
+              />
+
+              {activeGroup && (
+                <div className="mt-6">
+                  <p
+                    id={minutesLabelId}
+                    className="text-label font-sans uppercase tracking-label text-muted mb-3"
+                  >
+                    Elige los minutos ({activeGroup.hourLabel})
+                  </p>
+                  <ChoiceRadioGroup
+                    labelId={minutesLabelId}
+                    value={selectedSlot}
+                    onChange={onSelectSlot}
+                    variant="minute"
+                    options={activeGroup.slots.map((s) => ({
+                      value: s.iso,
+                      label: s.label,
+                    }))}
+                  />
+                </div>
+              )}
+
+              {selectedMinute && (
+                <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-body font-sans text-muted" aria-live="polite">
+                    <span className="capitalize">
+                      {formatSlotDate(selectedMinute.iso, timezone)}
+                    </span>{" "}
+                    a las{" "}
+                    <span className="text-foreground">{selectedMinute.label}</span>
+                  </p>
+                  <Button type="button" size="lg" onClick={onContinue}>
+                    Continuar
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Radiogroup accesible (hora / minutos) ──────────────────────────────────
+
+interface ChoiceOption {
+  value: string;
+  label: string;
+  sublabel?: string;
+  ariaLabel?: string;
+}
+
+/**
+ * Grupo de botones con semántica de radio: roving tabindex (Tab entra y sale
+ * del grupo; flechas, Inicio y Fin mueven el foco y la selección).
+ */
+function ChoiceRadioGroup({
+  labelId,
+  options,
+  value,
+  onChange,
+  variant,
+}: {
+  labelId: string;
+  options: ChoiceOption[];
+  value: string | null;
+  onChange: (value: string) => void;
+  variant: "hour" | "minute";
+}) {
+  const buttonsRef = useRef<(HTMLButtonElement | null)[]>([]);
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  const tabStop = selectedIndex >= 0 ? selectedIndex : 0;
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    const last = options.length - 1;
+    let next: number;
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        next = index === last ? 0 : index + 1;
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        next = index === 0 ? last : index - 1;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = last;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    buttonsRef.current[next]?.focus();
+    onChange(options[next].value);
+  }
+
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={labelId}
+      className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6"
+    >
+      {options.map((option, i) => {
+        const checked = option.value === value;
+        return (
+          <button
+            key={option.value}
+            ref={(el) => {
+              buttonsRef.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            aria-label={option.ariaLabel}
+            tabIndex={i === tabStop ? 0 : -1}
+            onClick={() => onChange(option.value)}
+            onKeyDown={(e) => handleKeyDown(e, i)}
+            className={cn(
+              "flex min-h-11 min-w-0 flex-col items-center justify-center rounded-button border px-2 py-2.5 text-sm font-sans font-medium tabular-nums transition-all",
+              "hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary",
+              checked
+                ? variant === "minute"
+                  ? "border-accent bg-accent text-background"
+                  : "border-accent bg-accent/10 text-accent"
+                : "border-border text-foreground"
+            )}
+          >
+            <span className="break-words text-center">{option.label}</span>
+            {option.sublabel && (
+              <span
+                className={cn(
+                  "mt-0.5 text-xs font-normal",
+                  checked ? "text-accent/80" : "text-muted"
+                )}
+              >
+                {option.sublabel}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -716,7 +1043,7 @@ function StepClientData({
 
 function StepConfirm({
   barber,
-  service,
+  services,
   slotStart,
   timezone,
   currency,
@@ -729,7 +1056,7 @@ function StepConfirm({
   onBack,
 }: {
   barber: PublicBarber;
-  service: PublicService;
+  services: PublicService[];
   slotStart: string;
   timezone: string;
   currency: string;
@@ -750,6 +1077,9 @@ function StepConfirm({
     year: "numeric",
   });
   const timeStr = formatSlotTime(slotStart, timezone);
+  // Totales orientativos con el catálogo público; los definitivos los
+  // devuelve book_appointment y se muestran en la pantalla de éxito.
+  const totals = sumServices(services);
 
   return (
     <div>
@@ -765,14 +1095,38 @@ function StepConfirm({
 
       <div className="mt-6 max-w-lg space-y-4">
         <ConfirmRow label="Barbero" value={barber.display_name} />
-        <ConfirmRow label="Servicio" value={service.name} />
+        <div className="py-1.5">
+          <p className="text-body font-sans text-muted">
+            {services.length === 1 ? "Servicio" : "Servicios"}
+          </p>
+          <ol className="mt-2 space-y-2 border-l border-border pl-4">
+            {services.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-baseline justify-between gap-4 text-body font-sans"
+              >
+                <span className="min-w-0">
+                  <span className="block text-foreground">{s.name}</span>
+                  <span className="block text-sm text-muted">
+                    {formatDuration(s.duration_minutes)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-foreground">
+                  {formatPrice(s.price_cents, currency)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
         <ConfirmRow
-          label="Precio"
-          value={formatPrice(service.price_cents, currency)}
+          label="Duración total"
+          value={formatDuration(totals.durationMinutes)}
+          capitalize={false}
         />
         <ConfirmRow
-          label="Duración"
-          value={formatDuration(service.duration_minutes)}
+          label="Precio total"
+          value={formatPrice(totals.priceCents, currency)}
+          capitalize={false}
         />
         <ConfirmRow label="Fecha" value={dateStr} />
         <ConfirmRow label="Hora" value={timeStr} />
@@ -812,13 +1166,53 @@ function StepConfirm({
   );
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Servicios del catálogo en el orden de `ids` (ignora ids desconocidos). */
+function pickServices(
+  catalog: PublicService[],
+  ids: readonly string[]
+): PublicService[] {
+  return ids
+    .map((id) => catalog.find((s) => s.id === id))
+    .filter((s): s is PublicService => s !== undefined);
+}
+
+/** Suma de duración (min) y precio (centavos, enteros) de los servicios. */
+function sumServices(services: readonly PublicService[]): {
+  durationMinutes: number;
+  priceCents: number;
+} {
+  return services.reduce(
+    (acc, s) => ({
+      durationMinutes: acc.durationMinutes + s.duration_minutes,
+      priceCents: acc.priceCents + s.price_cents,
+    }),
+    { durationMinutes: 0, priceCents: 0 }
+  );
+}
+
 // ─── Shared sub-components ──────────────────────────────────────────────────
 
-function ConfirmRow({ label, value }: { label: string; value: string }) {
+function ConfirmRow({
+  label,
+  value,
+  capitalize = true,
+}: {
+  label: string;
+  value: string;
+  /** false para valores como "1 h 30 min" que no deben capitalizarse. */
+  capitalize?: boolean;
+}) {
   return (
     <div className="flex justify-between gap-4 py-1.5">
       <span className="text-body font-sans text-muted">{label}</span>
-      <span className="text-body font-sans text-foreground text-right capitalize">
+      <span
+        className={cn(
+          "text-body font-sans text-foreground text-right",
+          capitalize && "capitalize"
+        )}
+      >
         {value}
       </span>
     </div>
