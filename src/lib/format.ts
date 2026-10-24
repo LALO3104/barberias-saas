@@ -47,6 +47,119 @@ export function formatSlotTime(isoString: string, timezone: string): string {
   });
 }
 
+// ─── Agrupación de horarios por hora ────────────────────────────────────────
+
+/** Un horario reservable dentro de un grupo de hora. */
+export interface HourSlot {
+  /** timestamptz ISO tal como lo devolvió el backend (se envía sin tocar). */
+  iso: string;
+  /** Hora local del tenant en formato 24 h, p. ej. "10:05". */
+  label: string;
+}
+
+/** Tramo consecutivo de horarios que comparten la misma hora local. */
+export interface SlotHourGroup {
+  /**
+   * Clave única y estable entre recargas: el instante (ms epoch) en que
+   * empieza esa hora local. No depende de qué minutos sigan libres.
+   */
+  key: string;
+  /** Etiqueta de la hora, p. ej. "10:00" (con desfase UTC si se repite). */
+  hourLabel: string;
+  slots: HourSlot[];
+}
+
+/**
+ * Agrupa los horarios devueltos por `get_available_slots` por hora local
+ * del tenant, para mostrarlos como "hora → minutos".
+ *
+ * NO calcula disponibilidad: solo reorganiza lo que el backend ya filtró.
+ *
+ * - La hora y los minutos salen de `Intl.DateTimeFormat` con la `timeZone`
+ *   del tenant y `hourCycle: "h23"` (nunca de la zona del navegador).
+ * - Se agrupan TRAMOS CONSECUTIVOS, no un Map por etiqueta: en un cambio de
+ *   horario que repite una hora (p. ej. 01:00–01:59 dos veces), cada
+ *   repetición queda en su propio grupo y no se mezclan instantes distintos.
+ *   Si una etiqueta se repite, se le agrega el desfase UTC para distinguirla.
+ * - Valores que no sean fechas válidas se ignoran.
+ */
+export function groupSlotsByHour(
+  slots: readonly string[],
+  timezone: string
+): SlotHourGroup[] {
+  const formatter = new Intl.DateTimeFormat("es-MX", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+
+  const parsed = slots
+    .map((iso) => ({ iso, time: new Date(iso).getTime() }))
+    .filter((s) => Number.isFinite(s.time))
+    .sort((a, b) => a.time - b.time);
+
+  const groups: (SlotHourGroup & { hourStart: number; hour: string })[] = [];
+
+  for (const { iso, time } of parsed) {
+    const parts = formatter.formatToParts(new Date(time));
+    const get = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value ?? "00";
+    // Algunos motores devuelven "24" para medianoche aun con h23.
+    const hour = get("hour") === "24" ? "00" : get("hour");
+    const minute = get("minute");
+    const second = Number(get("second"));
+    // Instante en que empieza esta hora local: distingue horas repetidas.
+    const wholeSecond = time - (((time % 1000) + 1000) % 1000);
+    const hourStart = wholeSecond - (Number(minute) * 60 + second) * 1000;
+
+    const last = groups[groups.length - 1];
+    if (last && last.hour === hour && last.hourStart === hourStart) {
+      last.slots.push({ iso, label: `${hour}:${minute}` });
+    } else {
+      groups.push({
+        key: String(hourStart),
+        hour,
+        hourStart,
+        hourLabel: `${hour}:00`,
+        slots: [{ iso, label: `${hour}:${minute}` }],
+      });
+    }
+  }
+
+  // Desambiguar etiquetas repetidas (solo ocurre en cambios de horario).
+  const labelCount = new Map<string, number>();
+  for (const g of groups) {
+    labelCount.set(g.hourLabel, (labelCount.get(g.hourLabel) ?? 0) + 1);
+  }
+
+  return groups.map(({ key, hourLabel, slots: groupSlots, hourStart }) => {
+    const offset =
+      (labelCount.get(hourLabel) ?? 0) > 1
+        ? getUtcOffsetLabel(hourStart, timezone)
+        : "";
+    return {
+      key,
+      hourLabel: offset ? `${hourLabel} (${offset})` : hourLabel,
+      slots: groupSlots,
+    };
+  });
+}
+
+/** Desfase UTC corto de un instante en la zona dada, p. ej. "GMT-6". */
+function getUtcOffsetLabel(time: number, timezone: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat("es-MX", {
+      timeZone: timezone,
+      timeZoneName: "shortOffset",
+    }).formatToParts(new Date(time));
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Formatea un timestamptz ISO a fecha legible en la timezone del tenant.
  * Ejemplo: formatSlotDate("2026-10-03T15:30:00Z", "America/Mexico_City") → "sábado 3 de octubre"
