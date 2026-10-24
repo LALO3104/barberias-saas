@@ -75,4 +75,10 @@
   --radius-button: var(--radius-button);
   --radius-card: var(--radius-card);
   --shadow-card: var(--shadow-card);
+
+  /* Curvas de movimiento → ease-out, ease-in-out. Más firmes que las de CSS
+     por defecto: la interfaz responde de inmediato y frena con suavidad.
+     (Las animaciones GSAP definen sus propias curvas en useGsapAnimation.) */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }

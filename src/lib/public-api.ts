@@ -9,7 +9,7 @@
  * expone `service_role` aquí.
  */
 
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import type {
   PublicTenant,
@@ -61,26 +61,73 @@ export async function fetchPublicTenant(
   return data as unknown as PublicTenant;
 }
 
+// ─── RPC con lista de servicios (Step 10.1) ─────────────────────────────────
+
+/** Máximo de servicios por cita (el backend también lo valida). */
+export const MAX_SERVICES_PER_BOOKING = 5;
+
+const INVALID_SERVICES_MESSAGE =
+  "La selección de servicios no es válida. Elige de 1 a 5 servicios distintos.";
+
+const UNAVAILABLE_MESSAGE =
+  "El barbero o alguno de los servicios ya no está disponible.";
+
+/**
+ * Pre-chequeo amable de la lista de servicios (1 a 5, sin repetir). La
+ * validación real ocurre en el backend; esto solo evita llamadas inútiles.
+ */
+function assertValidServiceIds(serviceIds: readonly string[]): void {
+  const valid =
+    serviceIds.length >= 1 &&
+    serviceIds.length <= MAX_SERVICES_PER_BOOKING &&
+    serviceIds.every((id) => typeof id === "string" && id.length > 0) &&
+    new Set(serviceIds).size === serviceIds.length;
+
+  if (!valid) {
+    throw new PublicApiError(INVALID_SERVICES_MESSAGE, ERROR_CODES.VALIDATION);
+  }
+}
+
+/** Traduce un 23514 (check_violation) según lo que reporte el backend. */
+function validationMessage(error: PostgrestError, fallback: string): string {
+  const text = `${error.message ?? ""} ${error.details ?? ""}`.toLowerCase();
+  if (text.includes("teléfono") || text.includes("telefono") || text.includes("phone")) {
+    return "Revisa tu teléfono: debe tener 10 dígitos (ej: 55 1234 5678).";
+  }
+  if (text.includes("servicio") || text.includes("service")) {
+    return INVALID_SERVICES_MESSAGE;
+  }
+  return fallback;
+}
+
 // ─── get_available_slots ────────────────────────────────────────────────────
 
 export async function fetchAvailableSlots(
   client: Client,
   slug: string,
   barberId: string,
-  serviceId: string,
+  serviceIds: string[],
   targetDate: string // YYYY-MM-DD
 ): Promise<AvailableSlot[]> {
-  const { data, error } = await client.rpc("get_available_slots", {
-    _slug: slug,
-    _barber_id: barberId,
-    _service_id: serviceId,
-    _target_date: targetDate,
-  });
+  assertValidServiceIds(serviceIds);
+
+  const { data, error } = await client.rpc(
+    "get_available_slots",
+    {
+      _slug: slug,
+      _barber_id: barberId,
+      _service_ids: serviceIds,
+      _target_date: targetDate,
+    }
+  );
 
   if (error) {
     if (error.code === ERROR_CODES.NOT_FOUND) {
+      throw new PublicApiError(UNAVAILABLE_MESSAGE, error.code);
+    }
+    if (error.code === ERROR_CODES.VALIDATION) {
       throw new PublicApiError(
-        "Barbero o servicio no encontrado",
+        validationMessage(error, INVALID_SERVICES_MESSAGE),
         error.code
       );
     }
@@ -100,22 +147,28 @@ export async function bookAppointment(
   params: {
     slug: string;
     barberId: string;
-    serviceId: string;
+    /** 1 a 5 servicios distintos, en el orden elegido por el cliente. */
+    serviceIds: string[];
     startAt: string; // timestamptz ISO string
     clientName: string;
     clientPhone: string;
     clientNote?: string;
   }
 ): Promise<BookingConfirmation> {
-  const { data, error } = await client.rpc("book_appointment", {
-    _slug: params.slug,
-    _barber_id: params.barberId,
-    _service_id: params.serviceId,
-    _start_at: params.startAt,
-    _client_name: params.clientName,
-    _client_phone: params.clientPhone,
-    _client_note: params.clientNote || undefined,
-  });
+  assertValidServiceIds(params.serviceIds);
+
+  const { data, error } = await client.rpc(
+    "book_appointment",
+    {
+      _slug: params.slug,
+      _barber_id: params.barberId,
+      _service_ids: params.serviceIds,
+      _start_at: params.startAt,
+      _client_name: params.clientName,
+      _client_phone: params.clientPhone,
+      _client_note: params.clientNote || undefined,
+    }
+  );
 
   if (error) {
     if (error.code === ERROR_CODES.SLOT_TAKEN) {
@@ -124,18 +177,28 @@ export async function bookAppointment(
         error.code
       );
     }
-    if (error.code === ERROR_CODES.NOT_FOUND) {
+    // El horario entró en la ventana mínima de anticipación mientras el
+    // cliente llenaba sus datos: se trata como horario ya no disponible para
+    // que el wizard recargue los horarios.
+    if (
+      error.code === ERROR_CODES.VALIDATION &&
+      (error.message ?? "").toLowerCase().includes("anticipación")
+    ) {
       throw new PublicApiError(
-        "Barbero o servicio no encontrado",
-        error.code
+        "Ese horario ya no está disponible. Selecciona otro horario.",
+        ERROR_CODES.SLOT_TAKEN
       );
     }
-    // check_violation — validaciones del backend
-    if (error.code === ERROR_CODES.VALIDATION || error.code === "23514") {
+    if (error.code === ERROR_CODES.NOT_FOUND) {
+      throw new PublicApiError(UNAVAILABLE_MESSAGE, error.code);
+    }
+    // check_violation — validaciones del backend (teléfono, servicios, etc.)
+    if (error.code === ERROR_CODES.VALIDATION) {
       throw new PublicApiError(
-        error.message?.includes("teléfono")
-          ? "Revisa tu teléfono: debe tener 10 dígitos (ej: 55 1234 5678)."
-          : "Los datos de la reserva no son válidos. Revisa la información e intenta de nuevo.",
+        validationMessage(
+          error,
+          "Los datos de la reserva no son válidos. Revisa la información e intenta de nuevo."
+        ),
         error.code
       );
     }

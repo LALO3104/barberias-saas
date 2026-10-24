@@ -63,18 +63,27 @@ export interface AvailableSlot {
 
 // ─── book_appointment ───────────────────────────────────────────────────────
 
+/** Línea de servicio de una cita reservada (Step 10.1: 1 a 5 por cita). */
+export interface BookedService {
+  id: string;
+  name: string;
+  price_cents: number;
+  duration_minutes: number;
+  /** Orden del servicio dentro de la cita (lo asigna el backend). */
+  position: number;
+}
+
 export interface BookingConfirmation {
   appointment_id: string;
   status: "pending";
   barber_id: string;
-  service: {
-    id: string;
-    name: string;
-    price_cents: number;
-    duration_minutes: number;
-  };
   start_at: string; // timestamptz ISO string
   end_at: string; // timestamptz ISO string
+  services: BookedService[];
+  /** Suma de los precios de las líneas, en centavos. */
+  total_price_cents: number;
+  /** Suma de las duraciones de las líneas, en minutos. */
+  total_duration_minutes: number;
   client: {
     id: string;
     name: string;
