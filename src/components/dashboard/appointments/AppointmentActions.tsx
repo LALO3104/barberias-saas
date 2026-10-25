@@ -12,6 +12,7 @@ import {
   type TargetStatus,
 } from "@/lib/appointments";
 import { changeAppointmentStatusAction } from "@/app/(dashboard)/dashboard/citas/actions";
+import { ChargeButton, type ChargeLine } from "./ChargeButton";
 
 interface AppointmentActionsProps {
   appointmentId: string;
@@ -24,6 +25,12 @@ interface AppointmentActionsProps {
    * que lo usa se arma en el servidor (las funciones no cruzan esa frontera).
    */
   extraAction?: ReactNode;
+  /**
+   * Datos para cobrar al completar (Step 12): "Completar" pasa a ser
+   * "Completar y cobrar". Son datos, no un elemento: este componente dibuja el
+   * botón de cobro él mismo.
+   */
+  charge?: { lines: ChargeLine[]; currency: string };
 }
 
 /** Estilo de botón neutro para acciones adicionales (mismo tamaño que los demás). */
@@ -50,6 +57,7 @@ export function AppointmentActions({
   clientName,
   timeLabel,
   extraAction,
+  charge,
 }: AppointmentActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -103,7 +111,18 @@ export function AppointmentActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        {targets.map((target) => (
+        {targets.map((target) =>
+          target === "completed" && charge ? (
+            <ChargeButton
+              key={target}
+              appointmentId={appointmentId}
+              clientName={clientName}
+              lines={charge.lines}
+              currency={charge.currency}
+              mode="complete"
+              className={cn(BUTTON_BASE, BUTTON_STYLE.completed)}
+            />
+          ) : (
           <button
             key={target}
             type="button"
@@ -122,7 +141,8 @@ export function AppointmentActions({
               ? "Guardando…"
               : ACTION_LABELS[target]}
           </button>
-        ))}
+          )
+        )}
         {extraAction}
       </div>
 

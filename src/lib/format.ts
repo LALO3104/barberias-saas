@@ -264,3 +264,21 @@ export function formatBusinessHours(
 
   return result;
 }
+/**
+ * Pesos escritos por el usuario → centavos enteros, sin punto flotante.
+ * "150", "150.5", "150,50" → 15000, 15050, 15050. Vacío → 0. Inválido → null.
+ */
+export function parsePesosToCents(raw: string): number | null {
+  const trimmed = raw.trim().replace(",", ".");
+  if (!trimmed) return 0;
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(trimmed)) return null;
+  const [intPart, decPart = ""] = trimmed.split(".");
+  return Number(intPart) * 100 + Number(decPart.padEnd(2, "0"));
+}
+
+/** Centavos → texto para un campo de pesos: 15000 → "150", 15050 → "150.50". */
+export function centsToPesosInput(cents: number): string {
+  const pesos = Math.floor(cents / 100);
+  const rest = cents % 100;
+  return rest === 0 ? String(pesos) : `${pesos}.${String(rest).padStart(2, "0")}`;
+}
