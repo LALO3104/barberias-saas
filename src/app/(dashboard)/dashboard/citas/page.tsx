@@ -19,6 +19,7 @@ import {
 } from "@/lib/appointments";
 import { TimezoneBadge } from "@/components/dashboard/schedules/ScheduleManager";
 import { AgendaToolbar, type AgendaFilters } from "@/components/dashboard/appointments/AgendaToolbar";
+import { WalkInLauncher, type WalkInService } from "@/components/dashboard/appointments/WalkInLauncher";
 import {
   AppointmentCard,
   type AgendaAppointment,
@@ -59,7 +60,7 @@ export default async function CitasPage(props: CitasPageProps) {
   // 2. Zona horaria del tenant
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("timezone")
+    .select("timezone, currency")
     .eq("id", tenantId)
     .single();
   if (tenantError || !tenant) return <LoadError title={title} />;
@@ -81,6 +82,8 @@ export default async function CitasPage(props: CitasPageProps) {
   let barberFilter: string | null = null;
   let barberOptions: { id: string; name: string; inactive: boolean }[] | undefined;
   const barberNames = new Map<string, string>();
+  // Barberos para los que se puede registrar un walk-in (admin: activos; barber: él).
+  let walkInBarbers: { id: string; name: string }[] = [];
 
   if (isAdmin) {
     const { data: barbers, error } = await supabase
@@ -100,10 +103,11 @@ export default async function CitasPage(props: CitasPageProps) {
 
     const requested = first(sp.barbero);
     if (requested && barberNames.has(requested)) barberFilter = requested;
+    walkInBarbers = barberOptions.filter((b) => !b.inactive).map((b) => ({ id: b.id, name: b.name }));
   } else {
     const { data: own, error } = await supabase
       .from("barbers")
-      .select("id, display_name")
+      .select("id, display_name, is_active")
       .eq("tenant_id", tenantId)
       .eq("user_id", authUser.id)
       .maybeSingle();
@@ -111,6 +115,7 @@ export default async function CitasPage(props: CitasPageProps) {
     if (!own) return <NotLinkedPage />;
     barberFilter = own.id;
     barberNames.set(own.id, own.display_name);
+    if (own.is_active) walkInBarbers = [{ id: own.id, name: own.display_name }];
   }
 
   // 5. Citas del rango (día o semana local del tenant)
@@ -120,7 +125,7 @@ export default async function CitasPage(props: CitasPageProps) {
 
   let apptQuery = supabase
     .from("appointments")
-    .select("id, barber_id, client_id, start_at, end_at, status, client_note, cancellation_reason")
+    .select("id, barber_id, client_id, start_at, end_at, status, source, overrides, client_note, cancellation_reason")
     .eq("tenant_id", tenantId)
     .gte("start_at", fromIso)
     .lt("start_at", toIso)
@@ -136,7 +141,21 @@ export default async function CitasPage(props: CitasPageProps) {
     .gte("start_at", new Date().toISOString());
   if (barberFilter) pendingQuery = pendingQuery.eq("barber_id", barberFilter);
 
-  const [apptRes, pendingRes] = await Promise.all([apptQuery, pendingQuery]);
+  const servicesQuery = supabase
+    .from("services")
+    .select("id, name, price_cents, duration_minutes")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  const [apptRes, pendingRes, servicesRes] = await Promise.all([apptQuery, pendingQuery, servicesQuery]);
+  const walkInServices: WalkInService[] = (servicesRes.data ?? []).map((s) => ({
+    id: s.id,
+    name: s.name,
+    priceCents: s.price_cents,
+    durationMinutes: s.duration_minutes,
+  }));
   if (apptRes.error) return <LoadError title={title} />;
   const rows = apptRes.data ?? [];
   const pendingUpcoming = pendingRes.count ?? 0;
@@ -182,6 +201,8 @@ export default async function CitasPage(props: CitasPageProps) {
     barberName: barberNames.get(r.barber_id) ?? null,
     clientNote: r.client_note,
     cancellationReason: r.cancellation_reason,
+    source: r.source,
+    overrides: r.overrides ?? [],
   }));
 
   // 7. Agrupar por día local
@@ -203,7 +224,8 @@ export default async function CitasPage(props: CitasPageProps) {
   const filtered = estado !== "todos" || (isAdmin && barberFilter !== null);
 
   return (
-    <div className="space-y-6">
+    // pb extra en el teléfono: el botón flotante de walk-in no tapa la última cita
+    <div className="space-y-6 pb-20 lg:pb-0">
       {/* ── Encabezado ─────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -214,7 +236,17 @@ export default async function CitasPage(props: CitasPageProps) {
               : "Tus citas y lo que necesitas para atenderlas"}
           </p>
         </div>
-        <TimezoneBadge timezone={tz} />
+        <div className="flex items-center gap-3">
+          <TimezoneBadge timezone={tz} />
+          <WalkInLauncher
+            timezone={tz}
+            currency={tenant.currency}
+            barbers={walkInBarbers}
+            canChooseBarber={isAdmin}
+            services={walkInServices}
+            defaultBarberId={isAdmin ? barberFilter : walkInBarbers[0]?.id}
+          />
+        </div>
       </div>
 
       {pendingUpcoming > 0 && estado !== "pending" && (
@@ -334,7 +366,7 @@ function EmptyState({ filtered, isToday }: { filtered: boolean; isToday: boolean
         <p className="mt-2 max-w-sm text-sm font-sans text-muted">
           {filtered
             ? "Prueba con otro estado, otro barbero o la vista de semana."
-            : "Las reservas que hagan tus clientes desde la página pública aparecerán aquí."}
+            : "Las reservas en línea y los walk-ins que registres aparecerán aquí."}
         </p>
       </div>
     </div>

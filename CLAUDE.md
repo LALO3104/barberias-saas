@@ -28,7 +28,8 @@ El último commit y la última migración se consultan con `git log` y
 `supabase/migrations/`; no asumirlos. Steps cerrados al escribir esta guía:
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
-varios servicios por cita, horarios cada 5 min).
+varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
+el teléfono), 10.3 (walk-ins).
 
 ## 2. Stack y comandos
 
@@ -98,7 +99,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 17 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 18 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -146,8 +147,20 @@ en cualquier ruta.
 cambiar estados con UPDATE directo desde una Server Action.
 
 **Creación:** `authenticated` no tiene INSERT en `appointments`; las citas
-nacen en `public.book_appointment`. Walk-ins u otras formas de crear citas
-requieren una función nueva y segura. No reabrir INSERT.
+nacen en `public.book_appointment` (reserva pública) o `public.create_walk_in`
+(personal). Otras formas de crear citas requieren una función nueva y segura.
+No reabrir INSERT.
+
+**Walk-ins (Step 10.3):** `create_walk_in` (SECURITY DEFINER): `confirmed`,
+`source = walk_in`, hora exacta de HOY (zona del tenant), 1 a 5 servicios;
+admin → barbero activo de su barbería, barbero → solo él
+(`private.walk_in_tenant`). Traslape, fuera de horario o bloqueo → `BA007`
+con `detail` JSON (`warnings`, `conflicts`); con `_acknowledge_warnings` se
+registra y los avisos quedan en `overrides`/`overrides_at`/`overrides_by`.
+`appointments_no_overlap` excluye solo las citas con `'overlap'` aceptado, por
+eso toda función que cree o mueva citas debe tomar `lock_barber_agenda` y
+revalidar con `overlaps_active_appointment` (que sí las ve). El cliente
+existente por teléfono conserva su nombre (`find_client_by_phone`).
 
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
@@ -158,7 +171,8 @@ específica; nunca ampliar el UPDATE general.
 
 **Auditoría inmutable para todos** (incluido el SQL Editor): `id`,
 `tenant_id`, `source`, `created_at`, `created_by`, `completed_at`,
-`cancelled_at`, `cancelled_by`. El motivo de cancelación es obligatorio al
+`cancelled_at`, `cancelled_by`, `occupied_until`, `overrides`,
+`overrides_at`, `overrides_by`. El motivo de cancelación es obligatorio al
 cancelar (sin vacíos ni solo espacios, máximo 500) y no se reescribe después.
 
 **`appointment_services`:** al insertar, el servicio debe existir, ser de la
@@ -199,6 +213,7 @@ en una migración cuando nada las use.
 | `BA003` | servicio inactivo |
 | `BA004` | cita completada: servicios bloqueados |
 | `BA006` | más de 5 servicios en una cita |
+| `BA007` | walk-in con avisos: necesita confirmación del personal (`detail` JSON) |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -217,7 +232,8 @@ Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
 `auth.users` y `auth.uid()`). Sin Docker funciona PostgreSQL 17 portable (zip
 de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
-`appointments_hardening`, `appointment_occupancy`, `multi_service_booking`;
+`appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
+`walk_ins`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -255,6 +271,6 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
   extiende `end_at`.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
-- No existen todavía: walk-ins, reprogramación, reasignación, pagos/cobros,
-  comisiones, estadísticas, ganancias, notificaciones. El orden se decide
+- No existen todavía: reprogramación, reasignación, pagos/cobros,
+  comisiones, estadísticas, ganancias, avisos por WhatsApp, módulo de clientes. El orden se decide
   inspeccionando dependencias, no por suposición.
