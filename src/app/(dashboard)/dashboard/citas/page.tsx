@@ -21,6 +21,7 @@ import { TimezoneBadge } from "@/components/dashboard/schedules/ScheduleManager"
 import { AgendaToolbar, type AgendaFilters } from "@/components/dashboard/appointments/AgendaToolbar";
 import { WalkInLauncher, type WalkInService } from "@/components/dashboard/appointments/WalkInLauncher";
 import type { MoveOptions } from "@/components/dashboard/appointments/MoveAppointmentButton";
+import type { AgendaCharge } from "@/components/dashboard/appointments/ChargeSummary";
 import {
   AppointmentCard,
   type AgendaAppointment,
@@ -182,6 +183,8 @@ export default async function CitasPage(props: CitasPageProps) {
   const clients = new Map<string, { name: string; phone: string | null }>();
   const services = new Map<string, string[]>();
   const serviceIdsByAppt = new Map<string, string[]>();
+  const linesByAppt = new Map<string, { name: string; priceCents: number }[]>();
+  const chargeByAppt = new Map<string, AgendaCharge>();
 
   if (clientIds.length > 0) {
     const { data, error } = await supabase
@@ -196,7 +199,7 @@ export default async function CitasPage(props: CitasPageProps) {
   if (apptIds.length > 0) {
     const { data, error } = await supabase
       .from("appointment_services")
-      .select("appointment_id, service_id, service_name, position")
+      .select("appointment_id, service_id, service_name, price_cents, position")
       .eq("tenant_id", tenantId)
       .in("appointment_id", apptIds)
       .order("position", { ascending: true });
@@ -204,6 +207,49 @@ export default async function CitasPage(props: CitasPageProps) {
     for (const s of data ?? []) {
       services.set(s.appointment_id, [...(services.get(s.appointment_id) ?? []), s.service_name]);
       serviceIdsByAppt.set(s.appointment_id, [...(serviceIdsByAppt.get(s.appointment_id) ?? []), s.service_id]);
+      linesByAppt.set(s.appointment_id, [
+        ...(linesByAppt.get(s.appointment_id) ?? []),
+        { name: s.service_name, priceCents: s.price_cents },
+      ]);
+    }
+  }
+
+  // Cobros activos de las citas completadas (RLS: admin → todos; barbero → los suyos).
+  const completedIds = rows.filter((r) => r.status === "completed").map((r) => r.id);
+  if (completedIds.length > 0) {
+    const { data: charges, error } = await supabase
+      .from("appointment_charges")
+      .select("id, appointment_id, total_cents, discount_cents, tip_cents")
+      .eq("tenant_id", tenantId)
+      .in("appointment_id", completedIds)
+      .is("voided_at", null);
+    if (error) return <LoadError title={title} />;
+
+    const chargeIds = (charges ?? []).map((c) => c.id);
+    const paymentsByCharge = new Map<string, AgendaCharge["payments"]>();
+    if (chargeIds.length > 0) {
+      const { data: payments, error: payError } = await supabase
+        .from("charge_payments")
+        .select("charge_id, method, amount_cents")
+        .eq("tenant_id", tenantId)
+        .in("charge_id", chargeIds);
+      if (payError) return <LoadError title={title} />;
+      for (const p of payments ?? []) {
+        paymentsByCharge.set(p.charge_id, [
+          ...(paymentsByCharge.get(p.charge_id) ?? []),
+          { method: p.method, amountCents: p.amount_cents },
+        ]);
+      }
+    }
+
+    for (const c of charges ?? []) {
+      chargeByAppt.set(c.appointment_id, {
+        id: c.id,
+        totalCents: c.total_cents,
+        discountCents: c.discount_cents,
+        tipCents: c.tip_cents,
+        payments: paymentsByCharge.get(c.id) ?? [],
+      });
     }
   }
 
@@ -222,7 +268,11 @@ export default async function CitasPage(props: CitasPageProps) {
     overrides: r.overrides ?? [],
     barberId: r.barber_id,
     serviceIds: serviceIdsByAppt.get(r.id) ?? [],
+    lines: linesByAppt.get(r.id) ?? [],
+    charge: chargeByAppt.get(r.id) ?? null,
   }));
+
+  const chargeOptions = { currency: tenant.currency, canVoid: isAdmin };
 
   const moveOptions: MoveOptions | undefined =
     moveBarbers.length > 0 && walkInServices.length > 0
@@ -303,7 +353,14 @@ export default async function CitasPage(props: CitasPageProps) {
         ) : (
           <div className="space-y-3">
             {appointments.map((a) => (
-              <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} moveOptions={moveOptions} />
+              <AppointmentCard
+                key={a.id}
+                appointment={a}
+                timezone={tz}
+                showBarber={showBarber}
+                moveOptions={moveOptions}
+                chargeOptions={chargeOptions}
+              />
             ))}
           </div>
         )
@@ -326,7 +383,14 @@ export default async function CitasPage(props: CitasPageProps) {
                   </span>
                 </h2>
                 {list.map((a) => (
-                  <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} moveOptions={moveOptions} />
+                  <AppointmentCard
+                    key={a.id}
+                    appointment={a}
+                    timezone={tz}
+                    showBarber={showBarber}
+                    moveOptions={moveOptions}
+                    chargeOptions={chargeOptions}
+                  />
                 ))}
               </section>
             );

@@ -29,7 +29,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual).
 
 ## 2. Stack y comandos
 
@@ -99,7 +99,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 19 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 20 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -171,6 +171,19 @@ origen y destino (orden fijo). Las líneas que siguen conservan su snapshot,
 las nuevas toman el catálogo; `end_at` = suma de las líneas. Cada movimiento
 queda en `appointment_changes` (solo lectura por API).
 
+**Cobro (Step 12):** se cobra al completar. `charge_appointment` (SECURITY
+DEFINER) completa la cita confirmada y registra el cobro en la misma
+transacción, o cobra de nuevo una completada cuyo cobro se anuló. Cobro =
+`appointment_charges` (subtotal = suma de las líneas, descuento con motivo
+opcional, propina, total; `barber_id` de quien atendió) + `charge_payments`
+(uno por método: `cash`, `card`, `transfer`; deben sumar el total; total 0 =
+cortesía sin pagos). Admin → su barbería; barbero → sus citas. Inmutables:
+solo el admin anula con `void_charge` (motivo obligatorio). El trigger
+diferido `appointments_require_charge` impide, por cualquier ruta, que una
+cita pase a `completed` sin cobro activo al confirmar la transacción (BA010):
+"Completar" sin cobro ya no existe. Las citas completadas antes de este Step
+no tienen cobro y se pueden registrar desde la agenda.
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -225,6 +238,8 @@ en una migración cuando nada las use.
 | `BA006` | más de 5 servicios en una cita |
 | `BA007` | walk-in o movimiento con avisos: necesita confirmación del personal (`detail` JSON) |
 | `BA008` | la cita ya no se puede mover (no está pendiente ni confirmada) |
+| `BA009` | la cita no se puede cobrar (estado o ya tiene cobro activo) / cobro ya anulado |
+| `BA010` | cita completada sin cobro activo (trigger diferido) |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -244,7 +259,7 @@ Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
 de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`;
+`walk_ins`, `move_appointment`, `charges`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -282,6 +297,6 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
   inserción directa (no por `move_appointment`) no extiende `end_at`.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
-- No existen todavía: pagos/cobros,
+- No existen todavía:
   comisiones, estadísticas, ganancias, avisos por WhatsApp, módulo de clientes. El orden se decide
   inspeccionando dependencias, no por suposición.

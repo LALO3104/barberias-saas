@@ -9,7 +9,10 @@ import {
   MAX_SERVICES_PER_APPOINTMENT,
   WALK_IN_NAME_MAX,
   WALK_IN_NOTE_MAX,
+  DISCOUNT_REASON_MAX,
+  VOID_REASON_MAX,
   isAppointmentStatus,
+  isPaymentMethod,
   isDateKey,
   isTargetStatus,
   isTimeKey,
@@ -398,6 +401,134 @@ export async function moveAppointmentAction(input: unknown): Promise<WalkInResul
         return { error: "No tienes permiso para mover esta cita." };
       default:
         return { error: "No se pudo mover la cita. Intenta de nuevo." };
+    }
+  }
+
+  revalidatePath("/dashboard/citas");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+// ─── Cobro (completar y cobrar / registrar cobro / anular) ───────────────────
+
+export type ChargeResult = { success?: boolean; error?: string; stale?: boolean };
+
+const MAX_CENTS = 20_000_000; // 200 000 pesos por concepto: tope de cordura
+
+function isCents(value: unknown, min = 0): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= MAX_CENTS;
+}
+
+/**
+ * Completa (si está confirmada) y cobra una cita, o registra el cobro de una
+ * cita completada cuyo cobro se anuló. Montos en centavos. La suma de los pagos
+ * debe ser el total; public.charge_appointment vuelve a validar todo.
+ */
+export async function chargeAppointmentAction(input: unknown): Promise<ChargeResult> {
+  const data = (input ?? {}) as Record<string, unknown>;
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  const authUser = await getAuthenticatedUser(supabase);
+  const membership = authUser?.activeMembership;
+  if (!membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (membership.role !== "admin" && membership.role !== "barber") {
+    return { error: "No tienes permiso para cobrar citas." };
+  }
+
+  if (typeof data.appointmentId !== "string" || !UUID_RE.test(data.appointmentId)) {
+    return { error: "Cita no válida." };
+  }
+  if (!isCents(data.discountCents)) return { error: "El descuento no es válido." };
+  if (!isCents(data.tipCents)) return { error: "La propina no es válida." };
+
+  const reason = typeof data.discountReason === "string" ? data.discountReason.trim() : "";
+  if (reason.length > DISCOUNT_REASON_MAX) {
+    return { error: `El motivo del descuento no puede superar ${DISCOUNT_REASON_MAX} caracteres.` };
+  }
+
+  const rawPayments = data.payments;
+  if (!Array.isArray(rawPayments) || rawPayments.length > 3) return { error: "Los pagos no son válidos." };
+  const payments: { method: string; amount_cents: number }[] = [];
+  for (const p of rawPayments) {
+    const r = (p ?? {}) as Record<string, unknown>;
+    if (!isPaymentMethod(r.method) || !isCents(r.amountCents, 1)) {
+      return { error: "Cada pago necesita un método y un monto mayor a 0." };
+    }
+    payments.push({ method: r.method, amount_cents: r.amountCents });
+  }
+  if (new Set(payments.map((p) => p.method)).size !== payments.length) {
+    return { error: "Usa cada método de pago una sola vez." };
+  }
+
+  // La cita debe ser del tenant activo y visible para este usuario (RLS).
+  const { data: appointment, error: lookupError } = await supabase
+    .from("appointments")
+    .select("id")
+    .eq("id", data.appointmentId)
+    .eq("tenant_id", membership.tenantId)
+    .maybeSingle();
+  if (lookupError) return { error: "No se pudo verificar la cita. Intenta de nuevo." };
+  if (!appointment) return { error: "La cita no existe o no tienes acceso a ella.", stale: true };
+
+  const { error } = await supabase.rpc("charge_appointment", {
+    _appointment_id: appointment.id,
+    _payments: payments,
+    _discount_cents: data.discountCents,
+    _discount_reason: reason || undefined,
+    _tip_cents: data.tipCents,
+  });
+
+  if (error) {
+    switch (error.code) {
+      case "BA009":
+        revalidatePath("/dashboard/citas");
+        return { error: error.message, stale: true };
+      case "23514":
+        return { error: error.message };
+      case "P0002":
+        revalidatePath("/dashboard/citas");
+        return { error: "La cita no existe o no tienes acceso a ella.", stale: true };
+      case "42501":
+        return { error: "No tienes permiso para cobrar esta cita." };
+      default:
+        return { error: "No se pudo registrar el cobro. Intenta de nuevo." };
+    }
+  }
+
+  revalidatePath("/dashboard/citas");
+  revalidatePath("/dashboard");
+  return { success: true };
+}
+
+/** El admin anula un cobro (con motivo); después la cita puede cobrarse de nuevo. */
+export async function voidChargeAction(chargeId: unknown, reason: unknown): Promise<ChargeResult> {
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  const authUser = await getAuthenticatedUser(supabase);
+  const membership = authUser?.activeMembership;
+  if (!membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (membership.role !== "admin") return { error: "Solo el administrador puede anular cobros." };
+
+  if (typeof chargeId !== "string" || !UUID_RE.test(chargeId)) return { error: "Cobro no válido." };
+  const clean = typeof reason === "string" ? reason.trim() : "";
+  if (!clean) return { error: "Indica el motivo de la anulación." };
+  if (clean.length > VOID_REASON_MAX) {
+    return { error: `El motivo no puede superar ${VOID_REASON_MAX} caracteres.` };
+  }
+
+  const { error } = await supabase.rpc("void_charge", { _charge_id: chargeId, _reason: clean });
+  if (error) {
+    switch (error.code) {
+      case "BA009":
+        revalidatePath("/dashboard/citas");
+        return { error: "Este cobro ya estaba anulado.", stale: true };
+      case "23514":
+        return { error: error.message };
+      case "P0002":
+        return { error: "El cobro no existe o no tienes acceso a él.", stale: true };
+      default:
+        return { error: "No se pudo anular el cobro. Intenta de nuevo." };
     }
   }
 

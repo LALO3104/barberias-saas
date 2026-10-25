@@ -12,6 +12,7 @@ import { formatDuration } from "@/lib/format";
 import { AppointmentStatusBadge, STATUS_EDGE } from "./AppointmentStatusBadge";
 import { AppointmentActions } from "./AppointmentActions";
 import { MoveAppointmentButton, type MoveOptions } from "./MoveAppointmentButton";
+import { ChargeSummary, type AgendaCharge } from "./ChargeSummary";
 
 /** Lo que la agenda necesita para atender una cita. */
 export interface AgendaAppointment {
@@ -31,6 +32,10 @@ export interface AgendaAppointment {
   barberId: string;
   /** Servicios actuales, en orden (para "Mover"). */
   serviceIds: string[];
+  /** Líneas con precio congelado (para cobrar). */
+  lines: { name: string; priceCents: number }[];
+  /** Cobro activo (solo citas completadas). */
+  charge: AgendaCharge | null;
 }
 
 interface AppointmentCardProps {
@@ -40,9 +45,17 @@ interface AppointmentCardProps {
   showBarber: boolean;
   /** Datos para el panel "Mover" (sin ellos no se muestra el botón). */
   moveOptions?: MoveOptions;
+  /** Moneda y permiso de anular (admin) para cobrar; sin esto no hay cobro. */
+  chargeOptions?: { currency: string; canVoid: boolean };
 }
 
-export function AppointmentCard({ appointment: a, timezone, showBarber, moveOptions }: AppointmentCardProps) {
+export function AppointmentCard({
+  appointment: a,
+  timezone,
+  showBarber,
+  moveOptions,
+  chargeOptions,
+}: AppointmentCardProps) {
   const start = formatClock(a.startIso, timezone);
   const end = formatClock(a.endIso, timezone);
   const closed = a.status === "cancelled" || a.status === "no_show";
@@ -163,7 +176,19 @@ export function AppointmentCard({ appointment: a, timezone, showBarber, moveOpti
                 />
               ) : undefined
             }
+            charge={chargeOptions ? { lines: a.lines, currency: chargeOptions.currency } : undefined}
           />
+
+          {a.status === "completed" && chargeOptions && (
+            <ChargeSummary
+              appointmentId={a.id}
+              clientName={a.clientName}
+              lines={a.lines}
+              currency={chargeOptions.currency}
+              charge={a.charge}
+              canVoid={chargeOptions.canVoid}
+            />
+          )}
         </div>
       </div>
     </article>

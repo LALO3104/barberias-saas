@@ -80,6 +80,79 @@ export type Database = {
           },
         ]
       }
+      appointment_charges: {
+        Row: {
+          appointment_id: string
+          barber_id: string
+          created_at: string
+          created_by: string | null
+          discount_cents: number
+          discount_reason: string | null
+          id: string
+          subtotal_cents: number
+          tenant_id: string
+          tip_cents: number
+          total_cents: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          appointment_id: string
+          barber_id: string
+          created_at?: string
+          created_by?: string | null
+          discount_cents?: number
+          discount_reason?: string | null
+          id?: string
+          subtotal_cents: number
+          tenant_id: string
+          tip_cents?: number
+          total_cents: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          appointment_id?: string
+          barber_id?: string
+          created_at?: string
+          created_by?: string | null
+          discount_cents?: number
+          discount_reason?: string | null
+          id?: string
+          subtotal_cents?: number
+          tenant_id?: string
+          tip_cents?: number
+          total_cents?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_charges_appointment_fkey"
+            columns: ["tenant_id", "appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "appointment_charges_barber_fkey"
+            columns: ["tenant_id", "barber_id"]
+            isOneToOne: false
+            referencedRelation: "barbers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "appointment_charges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointment_services: {
         Row: {
           appointment_id: string
@@ -407,6 +480,48 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "business_hours_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      charge_payments: {
+        Row: {
+          amount_cents: number
+          charge_id: string
+          created_at: string
+          id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          tenant_id: string
+        }
+        Insert: {
+          amount_cents: number
+          charge_id: string
+          created_at?: string
+          id?: string
+          method: Database["public"]["Enums"]["payment_method"]
+          tenant_id: string
+        }
+        Update: {
+          amount_cents?: number
+          charge_id?: string
+          created_at?: string
+          id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "charge_payments_charge_fkey"
+            columns: ["tenant_id", "charge_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_charges"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "charge_payments_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -743,6 +858,16 @@ export type Database = {
             }
             Returns: Json
           }
+      charge_appointment: {
+        Args: {
+          _appointment_id: string
+          _discount_cents?: number
+          _discount_reason?: string
+          _payments: Json
+          _tip_cents?: number
+        }
+        Returns: Json
+      }
       create_walk_in: {
         Args: {
           _acknowledge_warnings?: boolean
@@ -809,6 +934,10 @@ export type Database = {
         Args: { _intervals: Json; _tenant_id: string }
         Returns: undefined
       }
+      void_charge: {
+        Args: { _charge_id: string; _reason: string }
+        Returns: Json
+      }
     }
     Enums: {
       appointment_source: "online" | "staff" | "walk_in"
@@ -819,6 +948,7 @@ export type Database = {
         | "cancelled"
         | "no_show"
       member_role: "admin" | "barber"
+      payment_method: "cash" | "card" | "transfer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -955,6 +1085,7 @@ export const Constants = {
         "no_show",
       ],
       member_role: ["admin", "barber"],
+      payment_method: ["cash", "card", "transfer"],
     },
   },
 } as const

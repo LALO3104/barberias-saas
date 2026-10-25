@@ -273,3 +273,22 @@ export const VIEW_DAYS: Record<AgendaView, number> = { dia: 1, semana: 7 };
 export function isAgendaView(value: unknown): value is AgendaView {
   return value === "dia" || value === "semana";
 }
+
+// ─── Cobros ──────────────────────────────────────────────────────────────────
+
+export type PaymentMethod = Database["public"]["Enums"]["payment_method"];
+
+export const PAYMENT_METHODS: PaymentMethod[] = ["cash", "card", "transfer"];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: "Efectivo",
+  card: "Tarjeta",
+  transfer: "Transferencia",
+};
+
+export function isPaymentMethod(value: unknown): value is PaymentMethod {
+  return typeof value === "string" && (PAYMENT_METHODS as string[]).includes(value);
+}
+
+export const DISCOUNT_REASON_MAX = 200;
+export const VOID_REASON_MAX = 500;
