@@ -50,7 +50,8 @@ src/app/
   (public)/page.tsx               landing raíz (demo)
   [slug]/page.tsx                 landing pública por barbería (/kings)
   (auth)/                         login, forgot/reset password, callback
-  (dashboard)/layout.tsx          exige sesión + membresía; nav por rol
+  (dashboard)/layout.tsx          exige sesión + membresía; nav por rol; manifest PWA
+  pwa/icon/[size]/route.tsx       íconos de la app instalable (192, 512, maskable, apple)
   (dashboard)/dashboard/
     page.tsx                      inicio (tarjeta "Citas de hoy")
     barberos/  servicios/         solo admin
@@ -65,6 +66,10 @@ src/lib/
   public-api.ts                   RPC públicas de la reserva (desde el navegador)
   dashboard-nav.ts                menú por rol
 src/components/                   ui/, dashboard/*, public/*, sections/, animations/
+  dashboard/MobileNav.tsx         teléfono: cabecera + barra inferior + panel "Más"
+  dashboard/Sidebar.tsx           escritorio (lg+)
+  dashboard/pwa.tsx               registro del service worker, aviso sin conexión, instalar app
+public/manifest.webmanifest, sw.js, offline.html   app "Mi barbería" (solo personal)
 src/types/supabase.ts             tipos generados del esquema (§6)
 supabase/migrations/              esquema esperado (fuente de verdad)
 supabase/tests/                   pruebas SQL (§9)
@@ -217,6 +222,13 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
 
+- **Primero el teléfono** (~390 px): el personal usa la app instalable "Mi
+  barbería" (PWA, solo dashboard y login; las páginas públicas no se instalan).
+  Navegación en barra inferior (`primary` en `dashboard-nav.ts`, máx. 3 + "Más"),
+  `ui/Dialog` es panel desde abajo en teléfono, áreas seguras con
+  `env(safe-area-inset-*)`, alturas con `dvh`/`svh`. El service worker nunca
+  guarda páginas (traen datos de clientes): solo `/_next/static` y la página
+  offline.
 - Horas siempre en 24 h (`09:30`), en la zona del tenant.
 - Curvas de movimiento en tokens (`ease-out`, `ease-in-out` en `tokens.css`);
   controles con estado `active:` al presionar.
