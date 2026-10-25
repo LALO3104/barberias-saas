@@ -196,6 +196,69 @@ export function formatPhoneDisplay(phone: string): string {
   return mx ? `${mx[1]} ${mx[2]} ${mx[3]}` : phone;
 }
 
+const TIME_KEY_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** "HH:MM" válido en 24 h. */
+export function isTimeKey(value: unknown): value is string {
+  return typeof value === "string" && TIME_KEY_RE.test(value);
+}
+
+/**
+ * Instante UTC de la hora local `hhmm` del día `key` en `timezone`.
+ * Ej.: ("2026-10-25", "10:37", "America/Mexico_City") → 2026-10-25T16:37:00.000Z
+ * Misma corrección doble que zonedDayStartUtc para días con cambio de horario.
+ */
+export function zonedDateTimeToUtc(key: string, hhmm: string, timezone: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  const [hh, mi] = hhmm.split(":").map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh, mi);
+  let ts = guess - timezoneOffsetMs(guess, timezone);
+  ts = guess - timezoneOffsetMs(ts, timezone);
+  return new Date(ts);
+}
+
+/** Hora actual "HH:MM" (24 h) en la zona del tenant. */
+export function nowTimeKey(timezone: string): string {
+  return new Date().toLocaleTimeString("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+}
+
+// ─── Origen y walk-ins ───────────────────────────────────────────────────────
+
+export type AppointmentSource = Database["public"]["Enums"]["appointment_source"];
+
+export const SOURCE_LABELS: Record<AppointmentSource, string> = {
+  online: "En línea",
+  staff: "Personal",
+  walk_in: "Walk-in",
+};
+
+/** Avisos que el personal puede aceptar al registrar un walk-in (BA007). */
+export type WalkInWarning =
+  | "overlap"
+  | "outside_business_hours"
+  | "outside_barber_hours"
+  | "schedule_block";
+
+export const WALK_IN_WARNING_LABELS: Record<WalkInWarning, string> = {
+  overlap: "Se traslapa con otra cita del barbero",
+  outside_business_hours: "Fuera del horario de la barbería",
+  outside_barber_hours: "Fuera del horario del barbero",
+  schedule_block: "Cae en un bloqueo de agenda (descanso, vacaciones…)",
+};
+
+export function isWalkInWarning(value: unknown): value is WalkInWarning {
+  return typeof value === "string" && value in WALK_IN_WARNING_LABELS;
+}
+
+export const WALK_IN_NAME_MAX = 120;
+export const WALK_IN_NOTE_MAX = 500;
+export const MAX_SERVICES_PER_APPOINTMENT = 5;
+
 // ─── Vistas de la agenda ─────────────────────────────────────────────────────
 
 export type AgendaView = "dia" | "semana";

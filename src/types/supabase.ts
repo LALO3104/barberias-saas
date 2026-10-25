@@ -89,6 +89,9 @@ export type Database = {
           end_at: string
           id: string
           occupied_until: string
+          overrides: string[]
+          overrides_at: string | null
+          overrides_by: string | null
           source: Database["public"]["Enums"]["appointment_source"]
           start_at: string
           status: Database["public"]["Enums"]["appointment_status"]
@@ -108,6 +111,9 @@ export type Database = {
           end_at: string
           id?: string
           occupied_until: string
+          overrides?: string[]
+          overrides_at?: string | null
+          overrides_by?: string | null
           source: Database["public"]["Enums"]["appointment_source"]
           start_at: string
           status?: Database["public"]["Enums"]["appointment_status"]
@@ -127,6 +133,9 @@ export type Database = {
           end_at?: string
           id?: string
           occupied_until?: string
+          overrides?: string[]
+          overrides_at?: string | null
+          overrides_by?: string | null
           source?: Database["public"]["Enums"]["appointment_source"]
           start_at?: string
           status?: Database["public"]["Enums"]["appointment_status"]
@@ -668,6 +677,22 @@ export type Database = {
             }
             Returns: Json
           }
+      create_walk_in: {
+        Args: {
+          _acknowledge_warnings?: boolean
+          _barber_id: string
+          _client_name: string
+          _client_note?: string
+          _client_phone: string
+          _service_ids: string[]
+          _start_at: string
+        }
+        Returns: Json
+      }
+      find_client_by_phone: {
+        Args: { _barber_id: string; _phone: string }
+        Returns: Json
+      }
       get_available_slots:
         | {
             Args: {

@@ -1,8 +1,11 @@
 import { cn } from "@/lib/utils";
 import {
+  WALK_IN_WARNING_LABELS,
   formatClock,
   formatPhoneDisplay,
+  isWalkInWarning,
   minutesBetween,
+  type AppointmentSource,
   type AppointmentStatus,
 } from "@/lib/appointments";
 import { formatDuration } from "@/lib/format";
@@ -21,6 +24,9 @@ export interface AgendaAppointment {
   barberName: string | null;
   clientNote: string | null;
   cancellationReason: string | null;
+  source: AppointmentSource;
+  /** Avisos que el personal aceptó al registrar la cita (walk-in). */
+  overrides: string[];
 }
 
 interface AppointmentCardProps {
@@ -34,6 +40,7 @@ export function AppointmentCard({ appointment: a, timezone, showBarber }: Appoin
   const start = formatClock(a.startIso, timezone);
   const end = formatClock(a.endIso, timezone);
   const closed = a.status === "cancelled" || a.status === "no_show";
+  const warnings = a.overrides.filter(isWalkInWarning).map((w) => WALK_IN_WARNING_LABELS[w]);
 
   return (
     <article
@@ -76,7 +83,23 @@ export function AppointmentCard({ appointment: a, timezone, showBarber }: Appoin
                 )}
               </p>
             </div>
-            <AppointmentStatusBadge status={a.status} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {a.source === "walk_in" && (
+                <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-sans font-medium text-accent">
+                  Walk-in
+                </span>
+              )}
+              {warnings.length > 0 && (
+                <span
+                  title={warnings.join(" · ")}
+                  className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-sans font-medium text-amber-300"
+                >
+                  Aviso aceptado
+                  <span className="sr-only">: {warnings.join(", ")}</span>
+                </span>
+              )}
+              <AppointmentStatusBadge status={a.status} />
+            </div>
           </div>
 
           {a.clientPhone && (
