@@ -1,17 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils";
-import { formatDuration, formatPrice } from "@/lib/format";
 import {
   MAX_SERVICES_PER_APPOINTMENT,
-  STATUS_LABELS,
   WALK_IN_NAME_MAX,
   WALK_IN_NOTE_MAX,
-  WALK_IN_WARNING_LABELS,
-  formatClock,
   nowTimeKey,
 } from "@/lib/appointments";
 import {
@@ -20,13 +16,18 @@ import {
   type WalkInConflict,
 } from "@/app/(dashboard)/dashboard/citas/actions";
 import type { WalkInWarning } from "@/lib/appointments";
+import {
+  ErrorText,
+  FIELD,
+  LABEL,
+  PRIMARY,
+  SECONDARY,
+  ServicePicker,
+  WarningsReview,
+  type FormService,
+} from "./AppointmentFormParts";
 
-export interface WalkInService {
-  id: string;
-  name: string;
-  priceCents: number;
-  durationMinutes: number;
-}
+export type WalkInService = FormService;
 
 interface WalkInLauncherProps {
   timezone: string;
@@ -45,14 +46,6 @@ type Lookup =
   | { state: "found"; name: string }
   | { state: "new" }
   | { state: "invalid" };
-
-const FIELD =
-  "block w-full rounded-button border border-border bg-background px-4 py-3 text-body font-sans text-foreground placeholder:text-muted/50 transition-colors duration-150 ease-out focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-50";
-const LABEL = "mb-1.5 block text-sm font-sans text-muted";
-const PRIMARY =
-  "inline-flex w-full items-center justify-center rounded-button bg-accent px-5 py-3.5 text-body font-sans font-semibold text-background transition-[filter,transform] duration-150 ease-out hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
-const SECONDARY =
-  "inline-flex w-full items-center justify-center rounded-button border border-border px-5 py-3.5 text-body font-sans text-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-border/40 active:scale-[0.98] disabled:opacity-50";
 
 /**
  * Botón "Walk-in" + formulario (panel desde abajo en el teléfono).
@@ -84,14 +77,6 @@ export function WalkInLauncher({
   const [confirm, setConfirm] = useState<{ warnings: WalkInWarning[]; conflicts: WalkInConflict[] } | null>(null);
   const lookupSeq = useRef(0);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const selected = useMemo(
-    () => serviceIds.map((id) => services.find((s) => s.id === id)).filter((s): s is WalkInService => !!s),
-    [serviceIds, services]
-  );
-  const totalMinutes = selected.reduce((sum, s) => sum + s.durationMinutes, 0);
-  const totalCents = selected.reduce((sum, s) => sum + s.priceCents, 0);
-  const atLimit = serviceIds.length >= MAX_SERVICES_PER_APPOINTMENT;
 
   function openSheet() {
     setBarberId(initialBarber);
@@ -211,35 +196,12 @@ export function WalkInLauncher({
       <Dialog open={open} onClose={closeSheet} title={confirm ? "Revisa antes de registrar" : "Registrar walk-in"}>
         {confirm ? (
           <div className="space-y-5">
-            <p className="text-body font-sans text-muted">
-              Puedes registrarlo de todos modos: ninguna otra cita se moverá ni se cancelará.
-            </p>
-            <ul className="space-y-2">
-              {confirm.warnings.map((w) => (
-                <li
-                  key={w}
-                  className="flex items-start gap-2.5 rounded-button border border-amber-500/30 bg-amber-500/10 px-3.5 py-3 text-sm font-sans text-amber-200"
-                >
-                  <WarningIcon />
-                  {WALK_IN_WARNING_LABELS[w]}
-                </li>
-              ))}
-            </ul>
-            {confirm.conflicts.length > 0 && (
-              <div>
-                <p className="mb-2 text-label font-sans uppercase tracking-label text-muted">Citas que se traslapan</p>
-                <ul className="divide-y divide-border rounded-card border border-border">
-                  {confirm.conflicts.map((c) => (
-                    <li key={c.startIso + c.clientName} className="flex items-center justify-between gap-3 px-3.5 py-3">
-                      <span className="min-w-0 truncate text-body font-sans text-foreground">{c.clientName}</span>
-                      <span className="shrink-0 text-sm font-sans tabular-nums text-muted">
-                        {formatClock(c.startIso, timezone)}–{formatClock(c.endIso, timezone)} · {STATUS_LABELS[c.status]}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <WarningsReview
+              warnings={confirm.warnings}
+              conflicts={confirm.conflicts}
+              timezone={timezone}
+              intro="Puedes registrarlo de todos modos: ninguna otra cita se moverá ni se cancelará."
+            />
             {error && <ErrorText>{error}</ErrorText>}
             <div className="flex flex-col gap-2">
               <button type="button" onClick={() => submit(true)} disabled={isPending} className={PRIMARY}>
@@ -280,40 +242,13 @@ export function WalkInLauncher({
               </div>
             )}
 
-            <fieldset>
-              <legend className={LABEL}>
-                Servicios <span className="text-muted/70">(máximo {MAX_SERVICES_PER_APPOINTMENT})</span>
-              </legend>
-              <div className="flex flex-wrap gap-2">
-                {services.map((s) => {
-                  const on = serviceIds.includes(s.id);
-                  const blocked = !on && atLimit;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      aria-pressed={on}
-                      aria-disabled={blocked || undefined}
-                      onClick={() => !blocked && toggleService(s.id)}
-                      disabled={isPending}
-                      className={cn(
-                        "inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-sans transition-[background-color,border-color,color,transform] duration-150 ease-out active:scale-[0.97]",
-                        on ? "border-accent bg-accent/15 text-accent" : "border-border text-foreground hover:border-accent/50",
-                        blocked && "opacity-40"
-                      )}
-                    >
-                      {s.name}
-                      <span className="text-xs text-muted">{formatDuration(s.durationMinutes)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-sm font-sans text-muted" aria-live="polite">
-                {selected.length === 0
-                  ? "Elige al menos un servicio."
-                  : `${formatDuration(totalMinutes)} · ${formatPrice(totalCents, currency)}`}
-              </p>
-            </fieldset>
+            <ServicePicker
+              services={services}
+              selectedIds={serviceIds}
+              onToggle={toggleService}
+              currency={currency}
+              disabled={isPending}
+            />
 
             <div>
               <label htmlFor="walkin-time" className={LABEL}>Hora (hoy)</label>
@@ -416,30 +351,10 @@ export function WalkInLauncher({
   );
 }
 
-function ErrorText({ children }: { children: React.ReactNode }) {
-  return (
-    <p role="alert" className="text-sm font-sans text-red-400">
-      {children}
-    </p>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-5 w-5" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-  );
-}
-
-function WarningIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
-      />
     </svg>
   );
 }

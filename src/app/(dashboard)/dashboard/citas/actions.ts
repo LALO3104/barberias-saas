@@ -10,6 +10,7 @@ import {
   WALK_IN_NAME_MAX,
   WALK_IN_NOTE_MAX,
   isAppointmentStatus,
+  isDateKey,
   isTargetStatus,
   isTimeKey,
   isWalkInWarning,
@@ -308,4 +309,99 @@ export async function lookupWalkInClientAction(
     valid: result.valid === true,
     existingName: typeof result.client?.name === "string" ? result.client.name : undefined,
   };
+}
+
+// ─── Mover cita (reprogramar / reasignar / cambiar servicios) ────────────────
+
+/**
+ * Mueve una cita pending/confirmed: nueva fecha y hora (en la zona de la
+ * barbería), barbero destino y servicios. admin → cualquier cita de su
+ * barbería; barbero → sus propias citas (también hacia otro barbero).
+ * public.move_appointment vuelve a validar todo bajo lock de agenda.
+ */
+export async function moveAppointmentAction(input: unknown): Promise<WalkInResult & { stale?: boolean }> {
+  const data = (input ?? {}) as Record<string, unknown>;
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  const authUser = await getAuthenticatedUser(supabase);
+  const membership = authUser?.activeMembership;
+  if (!membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (membership.role !== "admin" && membership.role !== "barber") {
+    return { error: "No tienes permiso para mover citas." };
+  }
+
+  if (typeof data.appointmentId !== "string" || !UUID_RE.test(data.appointmentId)) {
+    return { error: "Cita no válida." };
+  }
+  if (typeof data.barberId !== "string" || !UUID_RE.test(data.barberId)) {
+    return { error: "Elige un barbero." };
+  }
+  const serviceIds = data.serviceIds;
+  if (
+    !Array.isArray(serviceIds) ||
+    serviceIds.length < 1 ||
+    serviceIds.length > MAX_SERVICES_PER_APPOINTMENT ||
+    !serviceIds.every((id) => typeof id === "string" && UUID_RE.test(id)) ||
+    new Set(serviceIds).size !== serviceIds.length
+  ) {
+    return { error: `Elige de 1 a ${MAX_SERVICES_PER_APPOINTMENT} servicios distintos.` };
+  }
+  if (!isDateKey(data.date)) return { error: "Indica una fecha válida." };
+  if (!isTimeKey(data.time)) return { error: "Indica una hora válida." };
+
+  // La cita debe ser del tenant activo y visible para este usuario (RLS).
+  const { data: appointment, error: lookupError } = await supabase
+    .from("appointments")
+    .select("id")
+    .eq("id", data.appointmentId)
+    .eq("tenant_id", membership.tenantId)
+    .maybeSingle();
+  if (lookupError) return { error: "No se pudo verificar la cita. Intenta de nuevo." };
+  if (!appointment) return { error: "La cita no existe o no tienes acceso a ella.", stale: true };
+
+  const { data: tenant, error: tenantError } = await supabase
+    .from("tenants")
+    .select("timezone")
+    .eq("id", membership.tenantId)
+    .single();
+  if (tenantError || !tenant) return { error: "No se pudo cargar tu barbería. Intenta de nuevo." };
+
+  if (data.date < getTodayInTimezone(tenant.timezone)) {
+    return { error: "No puedes mover una cita a un día anterior." };
+  }
+  const startAt = zonedDateTimeToUtc(data.date, data.time, tenant.timezone);
+
+  const { error } = await supabase.rpc("move_appointment", {
+    _appointment_id: appointment.id,
+    _barber_id: data.barberId,
+    _start_at: startAt.toISOString(),
+    _service_ids: serviceIds as string[],
+    _acknowledge_warnings: data.acknowledgeWarnings === true,
+  });
+
+  if (error) {
+    switch (error.code) {
+      case "BA007":
+        return { needsConfirmation: true, ...parseWalkInDetails(error.details) };
+      case "BA008":
+        revalidatePath("/dashboard/citas");
+        return { error: "Esta cita ya no se puede mover (está completada, cancelada o no se presentó).", stale: true };
+      case "23514":
+        return { error: error.message };
+      case "P0002":
+        revalidatePath("/dashboard/citas");
+        return { error: "La cita, el barbero o algún servicio ya no está disponible.", stale: true };
+      case "P0003":
+        return { error: "La agenda cambió mientras tanto. Revisa el horario e intenta de nuevo." };
+      case "42501":
+        return { error: "No tienes permiso para mover esta cita." };
+      default:
+        return { error: "No se pudo mover la cita. Intenta de nuevo." };
+    }
+  }
+
+  revalidatePath("/dashboard/citas");
+  revalidatePath("/dashboard");
+  return { success: true };
 }
