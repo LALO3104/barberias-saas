@@ -11,6 +11,7 @@ import {
 import { formatDuration } from "@/lib/format";
 import { AppointmentStatusBadge, STATUS_EDGE } from "./AppointmentStatusBadge";
 import { AppointmentActions } from "./AppointmentActions";
+import { MoveAppointmentButton, type MoveOptions } from "./MoveAppointmentButton";
 
 /** Lo que la agenda necesita para atender una cita. */
 export interface AgendaAppointment {
@@ -25,8 +26,11 @@ export interface AgendaAppointment {
   clientNote: string | null;
   cancellationReason: string | null;
   source: AppointmentSource;
-  /** Avisos que el personal aceptó al registrar la cita (walk-in). */
+  /** Avisos que el personal aceptó al registrar o mover la cita. */
   overrides: string[];
+  barberId: string;
+  /** Servicios actuales, en orden (para "Mover"). */
+  serviceIds: string[];
 }
 
 interface AppointmentCardProps {
@@ -34,9 +38,11 @@ interface AppointmentCardProps {
   timezone: string;
   /** Admin viendo "Todos los barberos": muestra quién atiende. */
   showBarber: boolean;
+  /** Datos para el panel "Mover" (sin ellos no se muestra el botón). */
+  moveOptions?: MoveOptions;
 }
 
-export function AppointmentCard({ appointment: a, timezone, showBarber }: AppointmentCardProps) {
+export function AppointmentCard({ appointment: a, timezone, showBarber, moveOptions }: AppointmentCardProps) {
   const start = formatClock(a.startIso, timezone);
   const end = formatClock(a.endIso, timezone);
   const closed = a.status === "cancelled" || a.status === "no_show";
@@ -145,6 +151,18 @@ export function AppointmentCard({ appointment: a, timezone, showBarber }: Appoin
             status={a.status}
             clientName={a.clientName}
             timeLabel={start}
+            extraAction={
+              moveOptions && (a.status === "pending" || a.status === "confirmed") ? (
+                <MoveAppointmentButton
+                  appointmentId={a.id}
+                  clientName={a.clientName}
+                  barberId={a.barberId}
+                  serviceIds={a.serviceIds}
+                  startIso={a.startIso}
+                  options={moveOptions}
+                />
+              ) : undefined
+            }
           />
         </div>
       </div>

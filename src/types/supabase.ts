@@ -14,6 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
+      appointment_changes: {
+        Row: {
+          acknowledged: string[]
+          appointment_id: string
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_barber_id: string
+          new_end_at: string
+          new_service_ids: string[]
+          new_start_at: string
+          old_barber_id: string
+          old_end_at: string
+          old_service_ids: string[]
+          old_start_at: string
+          tenant_id: string
+        }
+        Insert: {
+          acknowledged?: string[]
+          appointment_id: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_barber_id: string
+          new_end_at: string
+          new_service_ids: string[]
+          new_start_at: string
+          old_barber_id: string
+          old_end_at: string
+          old_service_ids: string[]
+          old_start_at: string
+          tenant_id: string
+        }
+        Update: {
+          acknowledged?: string[]
+          appointment_id?: string
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_barber_id?: string
+          new_end_at?: string
+          new_service_ids?: string[]
+          new_start_at?: string
+          old_barber_id?: string
+          old_end_at?: string
+          old_service_ids?: string[]
+          old_start_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_changes_appointment_fkey"
+            columns: ["tenant_id", "appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "appointment_changes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointment_services: {
         Row: {
           appointment_id: string
@@ -717,6 +783,16 @@ export type Database = {
             }[]
           }
       get_public_tenant: { Args: { _slug: string }; Returns: Json }
+      move_appointment: {
+        Args: {
+          _acknowledge_warnings?: boolean
+          _appointment_id: string
+          _barber_id: string
+          _service_ids: string[]
+          _start_at: string
+        }
+        Returns: Json
+      }
       set_appointment_status: {
         Args: {
           _appointment_id: string

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/ui/Dialog";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,17 @@ interface AppointmentActionsProps {
   status: AppointmentStatus;
   clientName: string;
   timeLabel: string;
+  /**
+   * Acción adicional en la misma fila (p. ej. "Mover"). Es un elemento ya
+   * armado, no una función: este componente corre en el navegador y la tarjeta
+   * que lo usa se arma en el servidor (las funciones no cruzan esa frontera).
+   */
+  extraAction?: ReactNode;
 }
+
+/** Estilo de botón neutro para acciones adicionales (mismo tamaño que los demás). */
+export const NEUTRAL_ACTION_CLASS =
+  "inline-flex items-center justify-center gap-1.5 rounded-button border border-border px-3.5 py-2 text-sm font-sans text-foreground transition-[background-color,transform] duration-150 ease-out hover:bg-border/50 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary";
 
 const BUTTON_BASE =
   "inline-flex items-center justify-center gap-1.5 rounded-button px-3.5 py-2 text-sm font-sans transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background-secondary disabled:cursor-not-allowed disabled:opacity-50";
@@ -39,6 +49,7 @@ export function AppointmentActions({
   status,
   clientName,
   timeLabel,
+  extraAction,
 }: AppointmentActionsProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -112,6 +123,7 @@ export function AppointmentActions({
               : ACTION_LABELS[target]}
           </button>
         ))}
+        {extraAction}
       </div>
 
       {error && dialog === null && (

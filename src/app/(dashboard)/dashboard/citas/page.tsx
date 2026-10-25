@@ -20,6 +20,7 @@ import {
 import { TimezoneBadge } from "@/components/dashboard/schedules/ScheduleManager";
 import { AgendaToolbar, type AgendaFilters } from "@/components/dashboard/appointments/AgendaToolbar";
 import { WalkInLauncher, type WalkInService } from "@/components/dashboard/appointments/WalkInLauncher";
+import type { MoveOptions } from "@/components/dashboard/appointments/MoveAppointmentButton";
 import {
   AppointmentCard,
   type AgendaAppointment,
@@ -84,6 +85,8 @@ export default async function CitasPage(props: CitasPageProps) {
   const barberNames = new Map<string, string>();
   // Barberos para los que se puede registrar un walk-in (admin: activos; barber: él).
   let walkInBarbers: { id: string; name: string }[] = [];
+  // Barberos destino al mover una cita: activos de la barbería (admin y barbero).
+  let moveBarbers: { id: string; name: string }[] = [];
 
   if (isAdmin) {
     const { data: barbers, error } = await supabase
@@ -104,6 +107,7 @@ export default async function CitasPage(props: CitasPageProps) {
     const requested = first(sp.barbero);
     if (requested && barberNames.has(requested)) barberFilter = requested;
     walkInBarbers = barberOptions.filter((b) => !b.inactive).map((b) => ({ id: b.id, name: b.name }));
+    moveBarbers = walkInBarbers;
   } else {
     const { data: own, error } = await supabase
       .from("barbers")
@@ -116,6 +120,17 @@ export default async function CitasPage(props: CitasPageProps) {
     barberFilter = own.id;
     barberNames.set(own.id, own.display_name);
     if (own.is_active) walkInBarbers = [{ id: own.id, name: own.display_name }];
+
+    // El barbero también puede pasar sus citas a un compañero activo.
+    const { data: team, error: teamError } = await supabase
+      .from("barbers")
+      .select("id, display_name")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (teamError) return <LoadError title={title} />;
+    moveBarbers = (team ?? []).map((b) => ({ id: b.id, name: b.display_name }));
   }
 
   // 5. Citas del rango (día o semana local del tenant)
@@ -166,6 +181,7 @@ export default async function CitasPage(props: CitasPageProps) {
 
   const clients = new Map<string, { name: string; phone: string | null }>();
   const services = new Map<string, string[]>();
+  const serviceIdsByAppt = new Map<string, string[]>();
 
   if (clientIds.length > 0) {
     const { data, error } = await supabase
@@ -180,13 +196,14 @@ export default async function CitasPage(props: CitasPageProps) {
   if (apptIds.length > 0) {
     const { data, error } = await supabase
       .from("appointment_services")
-      .select("appointment_id, service_name, position")
+      .select("appointment_id, service_id, service_name, position")
       .eq("tenant_id", tenantId)
       .in("appointment_id", apptIds)
       .order("position", { ascending: true });
     if (error) return <LoadError title={title} />;
     for (const s of data ?? []) {
       services.set(s.appointment_id, [...(services.get(s.appointment_id) ?? []), s.service_name]);
+      serviceIdsByAppt.set(s.appointment_id, [...(serviceIdsByAppt.get(s.appointment_id) ?? []), s.service_id]);
     }
   }
 
@@ -203,7 +220,14 @@ export default async function CitasPage(props: CitasPageProps) {
     cancellationReason: r.cancellation_reason,
     source: r.source,
     overrides: r.overrides ?? [],
+    barberId: r.barber_id,
+    serviceIds: serviceIdsByAppt.get(r.id) ?? [],
   }));
+
+  const moveOptions: MoveOptions | undefined =
+    moveBarbers.length > 0 && walkInServices.length > 0
+      ? { timezone: tz, currency: tenant.currency, todayKey, barbers: moveBarbers, services: walkInServices }
+      : undefined;
 
   // 7. Agrupar por día local
   const dayKeys = Array.from({ length: days }, (_, i) => addDaysToKey(fecha, i));
@@ -279,7 +303,7 @@ export default async function CitasPage(props: CitasPageProps) {
         ) : (
           <div className="space-y-3">
             {appointments.map((a) => (
-              <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} />
+              <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} moveOptions={moveOptions} />
             ))}
           </div>
         )
@@ -302,7 +326,7 @@ export default async function CitasPage(props: CitasPageProps) {
                   </span>
                 </h2>
                 {list.map((a) => (
-                  <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} />
+                  <AppointmentCard key={a.id} appointment={a} timezone={tz} showBarber={showBarber} moveOptions={moveOptions} />
                 ))}
               </section>
             );

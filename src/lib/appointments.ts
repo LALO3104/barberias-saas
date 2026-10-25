@@ -217,14 +217,19 @@ export function zonedDateTimeToUtc(key: string, hhmm: string, timezone: string):
   return new Date(ts);
 }
 
-/** Hora actual "HH:MM" (24 h) en la zona del tenant. */
-export function nowTimeKey(timezone: string): string {
-  return new Date().toLocaleTimeString("en-GB", {
+/** Hora "HH:MM" (24 h) de un instante en la zona del tenant (formato de <input type="time">). */
+export function timeKeyInTimezone(iso: string | Date, timezone: string): string {
+  return new Date(iso).toLocaleTimeString("en-GB", {
     timeZone: timezone,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   });
+}
+
+/** Hora actual "HH:MM" (24 h) en la zona del tenant. */
+export function nowTimeKey(timezone: string): string {
+  return timeKeyInTimezone(new Date(), timezone);
 }
 
 // ─── Origen y walk-ins ───────────────────────────────────────────────────────
