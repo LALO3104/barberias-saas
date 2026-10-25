@@ -24,6 +24,7 @@ import {
   WarningsReview,
   type FormService,
 } from "./AppointmentFormParts";
+import { NEUTRAL_ACTION_CLASS } from "./AppointmentActions";
 
 /** Lo que el panel "Mover" necesita de la agenda (igual para todas las citas). */
 export interface MoveOptions {
@@ -58,7 +59,7 @@ export function MoveAppointmentButton({
   serviceIds: currentServiceIds,
   startIso,
   options,
-  className,
+  className = NEUTRAL_ACTION_CLASS,
 }: MoveAppointmentButtonProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);

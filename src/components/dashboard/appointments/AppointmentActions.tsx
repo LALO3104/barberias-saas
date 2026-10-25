@@ -18,8 +18,12 @@ interface AppointmentActionsProps {
   status: AppointmentStatus;
   clientName: string;
   timeLabel: string;
-  /** Acción adicional en la misma fila (p. ej. "Mover"), solo si la cita sigue viva. */
-  extraAction?: (buttonClassName: string) => ReactNode;
+  /**
+   * Acción adicional en la misma fila (p. ej. "Mover"). Es un elemento ya
+   * armado, no una función: este componente corre en el navegador y la tarjeta
+   * que lo usa se arma en el servidor (las funciones no cruzan esa frontera).
+   */
+  extraAction?: ReactNode;
 }
 
 /** Estilo de botón neutro para acciones adicionales (mismo tamaño que los demás). */
@@ -119,7 +123,7 @@ export function AppointmentActions({
               : ACTION_LABELS[target]}
           </button>
         ))}
-        {extraAction?.(NEUTRAL_ACTION_CLASS)}
+        {extraAction}
       </div>
 
       {error && dialog === null && (

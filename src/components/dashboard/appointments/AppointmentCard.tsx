@@ -152,19 +152,16 @@ export function AppointmentCard({ appointment: a, timezone, showBarber, moveOpti
             clientName={a.clientName}
             timeLabel={start}
             extraAction={
-              moveOptions && (a.status === "pending" || a.status === "confirmed")
-                ? (className) => (
-                    <MoveAppointmentButton
-                      appointmentId={a.id}
-                      clientName={a.clientName}
-                      barberId={a.barberId}
-                      serviceIds={a.serviceIds}
-                      startIso={a.startIso}
-                      options={moveOptions}
-                      className={className}
-                    />
-                  )
-                : undefined
+              moveOptions && (a.status === "pending" || a.status === "confirmed") ? (
+                <MoveAppointmentButton
+                  appointmentId={a.id}
+                  clientName={a.clientName}
+                  barberId={a.barberId}
+                  serviceIds={a.serviceIds}
+                  startIso={a.startIso}
+                  options={moveOptions}
+                />
+              ) : undefined
             }
           />
         </div>
