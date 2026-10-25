@@ -1,9 +1,33 @@
+import type { Metadata, Viewport } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getNavForRole } from "@/lib/dashboard-nav";
 import { Sidebar } from "@/components/dashboard/Sidebar";
+import { MobileNav } from "@/components/dashboard/MobileNav";
+import { PwaRegistrar } from "@/components/dashboard/pwa";
+
+/**
+ * App instalable "Mi barbería" (solo personal): el manifest se vincula aquí y
+ * en el login, no en las páginas públicas de reserva.
+ */
+export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  applicationName: "Mi barbería",
+  appleWebApp: {
+    capable: true,
+    title: "Mi barbería",
+    statusBarStyle: "black",
+  },
+  icons: { apple: "/pwa/icon/apple" },
+};
+
+/** Pantalla completa en el teléfono: el contenido respeta notch y barra de inicio. */
+export const viewport: Viewport = {
+  viewportFit: "cover",
+  themeColor: "#0b0b0b",
+};
 
 /**
  * Layout protegido del dashboard.
@@ -40,7 +64,14 @@ export default async function DashboardLayout({
   const navItems = getNavForRole(activeMembership.role);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
+      <PwaRegistrar />
+      <MobileNav
+        tenantName={activeMembership.tenantName}
+        userName={authUser.fullName}
+        role={activeMembership.role}
+        navItems={navItems}
+      />
       <Sidebar
         tenantName={activeMembership.tenantName}
         userName={authUser.fullName}
@@ -48,8 +79,9 @@ export default async function DashboardLayout({
         navItems={navItems}
       />
 
-      {/* Main content — offset by sidebar on desktop */}
-      <main className="lg:pl-64">
+      {/* Main content — offset by sidebar on desktop; espacio para la barra
+          inferior en el teléfono */}
+      <main className="pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pl-64">
         {/* Desktop header */}
         <header className="hidden lg:flex h-16 items-center justify-between border-b border-border bg-background px-8">
           <div />
@@ -65,7 +97,7 @@ export default async function DashboardLayout({
           </div>
         </header>
 
-        <div className="p-4 lg:p-8">{children}</div>
+        <div className="px-4 py-5 lg:p-8">{children}</div>
       </main>
     </div>
   );
@@ -75,7 +107,7 @@ export default async function DashboardLayout({
 
 function NoAccessPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-background px-4">
       <div className="max-w-md text-center space-y-6">
         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-border bg-background-secondary">
           <svg

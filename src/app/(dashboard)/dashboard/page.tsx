@@ -10,6 +10,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/appointments";
 import { StatusIcon } from "@/components/dashboard/appointments/AppointmentStatusBadge";
+import { InstallAppPrompt } from "@/components/dashboard/pwa";
 
 export const metadata: Metadata = {
   title: "Dashboard — Barberías",
@@ -42,6 +43,9 @@ export default async function DashboardPage() {
           {membership?.tenantName} — {roleLabel}
         </p>
       </div>
+
+      {/* Instalar la app (solo teléfono, si aún no está instalada) */}
+      <InstallAppPrompt variant="banner" />
 
       {/* Placeholder cards */}
       <div className="grid gap-[var(--spacing-gutter)] sm:grid-cols-2 lg:grid-cols-3">
