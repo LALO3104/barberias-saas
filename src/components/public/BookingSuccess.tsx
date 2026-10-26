@@ -8,6 +8,7 @@ import {
   formatSlotTime,
   formatSlotDate,
 } from "@/lib/format";
+import { waLink } from "@/lib/whatsapp";
 import type { PublicTenant, BookingConfirmation } from "@/types/public";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -70,6 +71,14 @@ export function BookingSuccess({
     { label: "Barbería", value: tenant.name },
     { label: "Barbero", value: getBarberName(tenant, barber_id) },
   ];
+
+  // Mensaje ya escrito del cliente a la barbería (wa.me, sin costo).
+  const whatsappHref = tenant.public_phone
+    ? waLink(
+        tenant.public_phone,
+        `Hola, acabo de reservar en ${tenant.name}: ${orderedServices.map((s) => s.name).join(", ")} con ${getBarberName(tenant, barber_id)} el ${formatSlotDate(start_at, tenant.timezone)} a las ${formatSlotTime(start_at, tenant.timezone)}. A nombre de ${client.name}.`
+      )
+    : null;
 
   const rowsAfter: { label: string; value: string }[] = [
     { label: "Duración total", value: formatDuration(total_duration_minutes) },
@@ -160,6 +169,11 @@ export function BookingSuccess({
 
         {/* ── Acciones ───────────────────────────────────────── */}
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+          {whatsappHref && (
+            <Button href={whatsappHref} target="_blank" rel="noopener noreferrer">
+              Avisar por WhatsApp
+            </Button>
+          )}
           <Button onClick={onNewBooking} variant="secondary">
             Hacer otra reserva
           </Button>

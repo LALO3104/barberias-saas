@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { parseTemplates } from "@/lib/whatsapp";
 import { getTodayInTimezone } from "@/lib/format";
 import {
   VIEW_DAYS,
@@ -62,7 +63,7 @@ export default async function CitasPage(props: CitasPageProps) {
   // 2. Zona horaria del tenant
   const { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("timezone, currency")
+    .select("timezone, currency, name, message_templates")
     .eq("id", tenantId)
     .single();
   if (tenantError || !tenant) return <LoadError title={title} />;
@@ -273,6 +274,7 @@ export default async function CitasPage(props: CitasPageProps) {
   }));
 
   const chargeOptions = { currency: tenant.currency, canVoid: isAdmin };
+  const whatsapp = { tenantName: tenant.name, templates: parseTemplates(tenant.message_templates) };
 
   const moveOptions: MoveOptions | undefined =
     moveBarbers.length > 0 && walkInServices.length > 0
@@ -360,6 +362,7 @@ export default async function CitasPage(props: CitasPageProps) {
                 showBarber={showBarber}
                 moveOptions={moveOptions}
                 chargeOptions={chargeOptions}
+                whatsapp={whatsapp}
               />
             ))}
           </div>
@@ -390,6 +393,7 @@ export default async function CitasPage(props: CitasPageProps) {
                     showBarber={showBarber}
                     moveOptions={moveOptions}
                     chargeOptions={chargeOptions}
+                    whatsapp={whatsapp}
                   />
                 ))}
               </section>

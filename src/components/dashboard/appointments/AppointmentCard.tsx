@@ -8,11 +8,19 @@ import {
   type AppointmentSource,
   type AppointmentStatus,
 } from "@/lib/appointments";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatSlotDate } from "@/lib/format";
+import {
+  MESSAGE_LABELS,
+  fillTemplate,
+  messagesForStatus,
+  templateFor,
+  type MessageTemplates,
+} from "@/lib/whatsapp";
 import { AppointmentStatusBadge, STATUS_EDGE } from "./AppointmentStatusBadge";
 import { AppointmentActions } from "./AppointmentActions";
 import { MoveAppointmentButton, type MoveOptions } from "./MoveAppointmentButton";
 import { ChargeSummary, type AgendaCharge } from "./ChargeSummary";
+import { WhatsAppButton } from "./WhatsAppButton";
 
 /** Lo que la agenda necesita para atender una cita. */
 export interface AgendaAppointment {
@@ -47,6 +55,8 @@ interface AppointmentCardProps {
   moveOptions?: MoveOptions;
   /** Moneda y permiso de anular (admin) para cobrar; sin esto no hay cobro. */
   chargeOptions?: { currency: string; canVoid: boolean };
+  /** Nombre de la barbería y plantillas para los avisos por WhatsApp. */
+  whatsapp?: { tenantName: string; templates: MessageTemplates };
 }
 
 export function AppointmentCard({
@@ -55,11 +65,29 @@ export function AppointmentCard({
   showBarber,
   moveOptions,
   chargeOptions,
+  whatsapp,
 }: AppointmentCardProps) {
   const start = formatClock(a.startIso, timezone);
   const end = formatClock(a.endIso, timezone);
   const closed = a.status === "cancelled" || a.status === "no_show";
   const warnings = a.overrides.filter(isWalkInWarning).map((w) => WALK_IN_WARNING_LABELS[w]);
+  const waValues = whatsapp && {
+    cliente: a.clientName,
+    barberia: whatsapp.tenantName,
+    barbero: a.barberName ?? "tu barbero",
+    fecha: formatSlotDate(a.startIso, timezone),
+    hora: start,
+    servicios: a.services.join(", "),
+    motivo: a.cancellationReason ?? "",
+  };
+  const waMessages =
+    whatsapp && waValues
+      ? messagesForStatus(a.status).map((key) => ({
+          key,
+          label: MESSAGE_LABELS[key],
+          text: fillTemplate(templateFor(key, whatsapp.templates), waValues),
+        }))
+      : [];
 
   return (
     <article
@@ -122,6 +150,7 @@ export function AppointmentCard({
           </div>
 
           {a.clientPhone && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <a
               href={`tel:${a.clientPhone}`}
               className="inline-flex items-center gap-1.5 rounded-button text-sm font-sans text-foreground/90 transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -144,6 +173,10 @@ export function AppointmentCard({
               <span className="sr-only">Llamar a </span>
               {formatPhoneDisplay(a.clientPhone)}
             </a>
+            {waMessages.length > 0 && (
+              <WhatsAppButton phone={a.clientPhone} clientName={a.clientName} messages={waMessages} />
+            )}
+            </div>
           )}
 
           {a.clientNote && (

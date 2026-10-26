@@ -855,6 +855,7 @@ export type Database = {
           currency: string
           id: string
           logo_url: string | null
+          message_templates: Json
           name: string
           plan_code: string
           postal_code: string | null
@@ -874,6 +875,7 @@ export type Database = {
           currency?: string
           id?: string
           logo_url?: string | null
+          message_templates?: Json
           name: string
           plan_code: string
           postal_code?: string | null
@@ -893,6 +895,7 @@ export type Database = {
           currency?: string
           id?: string
           logo_url?: string | null
+          message_templates?: Json
           name?: string
           plan_code?: string
           postal_code?: string | null
@@ -1030,6 +1033,10 @@ export type Database = {
       set_business_hours: {
         Args: { _intervals: Json; _tenant_id: string }
         Returns: undefined
+      }
+      update_tenant_messaging: {
+        Args: { _templates?: Json; _tenant_id: string; _whatsapp_phone: string }
+        Returns: Json
       }
       void_barber_payout: {
         Args: { _payout_id: string; _reason: string }
