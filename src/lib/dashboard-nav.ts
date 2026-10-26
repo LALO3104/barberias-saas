@@ -27,6 +27,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Horarios", href: "/dashboard/horarios", icon: "clock", primary: true },
   { label: "Barberos", href: "/dashboard/barberos", icon: "scissors" },
   { label: "Servicios", href: "/dashboard/servicios", icon: "sparkles" },
+  { label: "Ganancias", href: "/dashboard/ganancias", icon: "chart" },
 ];
 
 // "Mi agenda" usa la misma ruta que "Citas" del admin: la página filtra por rol
@@ -35,6 +36,7 @@ const BARBER_NAV: NavItem[] = [
   { label: "Inicio", href: "/dashboard", icon: "home", primary: true },
   { label: "Mi agenda", shortLabel: "Agenda", href: "/dashboard/citas", icon: "calendar", primary: true },
   { label: "Mi horario", shortLabel: "Horario", href: "/dashboard/horarios", icon: "clock", primary: true },
+  { label: "Mis ganancias", href: "/dashboard/ganancias", icon: "chart" },
 ];
 
 export function getNavForRole(role: MemberRole): NavItem[] {

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { isPayType, isSalaryPeriod } from "@/lib/compensation";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -157,5 +158,74 @@ export async function toggleBarberStatusAction(
   if (error) return { error: parseSupabaseError(error) };
 
   revalidatePath("/dashboard/barberos");
+  return { success: true };
+}
+
+// ─── Compensación: comisión o salario (Step 13) ─────────────────────────────
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Define cómo se le paga a un barbero: comisión (puntos base, 0–10000) o
+ * salario fijo (centavos + periodo). Solo admin (getAdminContext + RLS de
+ * barber_compensation). El cambio aplica a cobros futuros: cada cobro congela
+ * la compensación vigente al registrarse.
+ */
+export async function setBarberCompensationAction(input: unknown): Promise<BarberActionState> {
+  const ctx = await getAdminContext();
+  if ("error" in ctx) return { error: ctx.error };
+
+  const data = (input ?? {}) as Record<string, unknown>;
+  if (typeof data.barberId !== "string" || !UUID_RE.test(data.barberId)) {
+    return { error: "Barbero no válido." };
+  }
+  if (!isPayType(data.payType)) return { error: "Elige comisión o salario." };
+
+  let row: {
+    pay_type: "commission" | "salary";
+    commission_rate_bps: number | null;
+    salary_cents: number | null;
+    salary_period: string | null;
+  };
+  if (data.payType === "commission") {
+    const bps = data.commissionRateBps;
+    if (typeof bps !== "number" || !Number.isInteger(bps) || bps < 0 || bps > 10000) {
+      return { error: "La comisión debe estar entre 0 % y 100 %." };
+    }
+    row = { pay_type: "commission", commission_rate_bps: bps, salary_cents: null, salary_period: null };
+  } else {
+    const cents = data.salaryCents;
+    if (typeof cents !== "number" || !Number.isInteger(cents) || cents < 1 || cents > 100_000_000) {
+      return { error: "Escribe un salario válido." };
+    }
+    if (!isSalaryPeriod(data.salaryPeriod)) return { error: "Elige el periodo del salario." };
+    row = { pay_type: "salary", commission_rate_bps: null, salary_cents: cents, salary_period: data.salaryPeriod };
+  }
+
+  // El barbero debe ser de la barbería del admin (además de la FK compuesta).
+  const { data: barber, error: barberError } = await ctx.supabase
+    .from("barbers")
+    .select("id")
+    .eq("id", data.barberId)
+    .eq("tenant_id", ctx.tenantId)
+    .maybeSingle();
+  if (barberError) return { error: "No se pudo verificar el barbero. Intenta de nuevo." };
+  if (!barber) return { error: "El barbero no pertenece a tu barbería." };
+
+  const { error } = await ctx.supabase
+    .from("barber_compensation")
+    .upsert({ barber_id: barber.id, tenant_id: ctx.tenantId, ...row }, { onConflict: "barber_id" });
+
+  if (error) {
+    return {
+      error: error.code === "23514"
+        ? "Los datos de pago no son válidos."
+        : "No se pudo guardar el pago del barbero. Intenta de nuevo.",
+    };
+  }
+
+  revalidatePath("/dashboard/barberos");
+  revalidatePath("/dashboard/ganancias");
   return { success: true };
 }

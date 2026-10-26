@@ -29,7 +29,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos).
 
 ## 2. Stack y comandos
 
@@ -58,6 +58,7 @@ src/app/
     barberos/  servicios/         solo admin
     horarios/                     admin: barbería y barberos · barber: su horario
     citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
+    ganancias/                    admin "Ganancias" (reporte + pagos) · barber "Mis ganancias"
 src/lib/
   auth.ts                         getAuthenticatedUser() → activeMembership {tenantId, role}
   supabase/server.ts, client.ts   clientes con la sesión del usuario (RLS)
@@ -99,7 +100,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 20 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 21 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -184,6 +185,19 @@ cita pase a `completed` sin cobro activo al confirmar la transacción (BA010):
 "Completar" sin cobro ya no existe. Las citas completadas antes de este Step
 no tienen cobro y se pueden registrar desde la agenda.
 
+**Comisiones (Step 13):** el admin configura por barbero en
+`barber_compensation` comisión (`commission_rate_bps`) o salario fijo
+(`salary_cents` + `salary_period` semanal/quincenal/mensual). Al cobrar,
+`charge_appointment` congela en el cobro `pay_type`, `commission_rate_bps` y
+`commission_cents` = (subtotal − descuento) × tasa, redondeado; la propina es
+100 % del barbero y no lleva comisión. Cambiar la configuración no altera cobros
+anteriores; los cobros previos al Step o sin configuración tienen comisión NULL.
+Pagos = `barber_payouts` (periodo en fechas locales, comisión y propinas
+calculadas de los cobros activos del periodo, salario capturado; inmutables,
+sin traslape por barbero → BA011). Solo el admin registra
+(`record_barber_payout`) y anula (`void_barber_payout`, motivo obligatorio);
+el barbero solo ve los suyos. Pantalla `/dashboard/ganancias`.
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -240,6 +254,7 @@ en una migración cuando nada las use.
 | `BA008` | la cita ya no se puede mover (no está pendiente ni confirmada) |
 | `BA009` | la cita no se puede cobrar (estado o ya tiene cobro activo) / cobro ya anulado |
 | `BA010` | cita completada sin cobro activo (trigger diferido) |
+| `BA011` | ya hay un pago a ese barbero que cubre parte del periodo |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -259,7 +274,7 @@ Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
 de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -298,5 +313,5 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
 - No existen todavía:
-  comisiones, estadísticas, ganancias, avisos por WhatsApp, módulo de clientes. El orden se decide
+  estadísticas, avisos por WhatsApp, módulo de clientes. El orden se decide
   inspeccionando dependencias, no por suposición.

@@ -3,6 +3,8 @@
 import { useState, useTransition, useCallback } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { BarberForm } from "./BarberForm";
+import { CompensationButton } from "./CompensationButton";
+import { describeCompensation, type Compensation } from "@/lib/compensation";
 import { toggleBarberStatusAction } from "@/app/(dashboard)/dashboard/barberos/actions";
 import { cn } from "@/lib/utils";
 import type { Tables } from "@/types/supabase";
@@ -11,6 +13,9 @@ type Barber = Tables<"barbers">;
 
 interface BarberManagerProps {
   barbers: Barber[];
+  /** Compensación por barbero (Step 13); sin entrada = sin configurar. */
+  compensations: Record<string, Compensation>;
+  currency: string;
 }
 
 /**
@@ -22,7 +27,7 @@ interface BarberManagerProps {
  * Es Client Component porque gestiona estado interactivo.
  * Los datos se obtienen en el Server Component padre (page.tsx).
  */
-export function BarberManager({ barbers }: BarberManagerProps) {
+export function BarberManager({ barbers, compensations, currency }: BarberManagerProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editBarber, setEditBarber] = useState<Barber | null>(null);
   const [formKey, setFormKey] = useState(0);
@@ -258,10 +263,21 @@ export function BarberManager({ barbers }: BarberManagerProps) {
 
                 {/* Orden */}
                 <span className="text-muted">Orden: {barber.sort_order}</span>
+
+                {/* Pago (Step 13) */}
+                <span className={compensations[barber.id] ? "text-foreground" : "text-amber-300"}>
+                  {describeCompensation(compensations[barber.id], currency)}
+                </span>
               </div>
 
               {/* Acciones */}
               <div className="flex shrink-0 items-center gap-2">
+                <CompensationButton
+                  barberId={barber.id}
+                  barberName={barber.display_name}
+                  compensation={compensations[barber.id] ?? null}
+                  currency={currency}
+                />
                 <button
                   type="button"
                   onClick={() => {
