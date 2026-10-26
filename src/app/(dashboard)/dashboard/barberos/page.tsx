@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { BarberManager } from "@/components/dashboard/barbers/BarberManager";
+import { isPayType, isSalaryPeriod, type Compensation } from "@/lib/compensation";
 
 export const metadata: Metadata = {
   title: "Barberos — Dashboard",
@@ -56,7 +57,34 @@ export default async function BarbersPage() {
     );
   }
 
-  return <BarberManager barbers={barbers ?? []} />;
+  // 4. Compensación (comisión o salario) y moneda de la barbería
+  const tenantId = authUser.activeMembership.tenantId;
+  const [{ data: comps }, { data: tenant }] = await Promise.all([
+    supabase
+      .from("barber_compensation")
+      .select("barber_id, pay_type, commission_rate_bps, salary_cents, salary_period")
+      .eq("tenant_id", tenantId),
+    supabase.from("tenants").select("currency").eq("id", tenantId).single(),
+  ]);
+
+  const compensations: Record<string, Compensation> = {};
+  for (const c of comps ?? []) {
+    if (!isPayType(c.pay_type)) continue;
+    compensations[c.barber_id] = {
+      payType: c.pay_type,
+      commissionRateBps: c.commission_rate_bps,
+      salaryCents: c.salary_cents,
+      salaryPeriod: isSalaryPeriod(c.salary_period) ? c.salary_period : null,
+    };
+  }
+
+  return (
+    <BarberManager
+      barbers={barbers ?? []}
+      compensations={compensations}
+      currency={tenant?.currency ?? "MXN"}
+    />
+  );
 }
 
 // ─── Acceso denegado ─────────────────────────────────────────────────────────

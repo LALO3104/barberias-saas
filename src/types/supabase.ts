@@ -84,11 +84,14 @@ export type Database = {
         Row: {
           appointment_id: string
           barber_id: string
+          commission_cents: number | null
+          commission_rate_bps: number | null
           created_at: string
           created_by: string | null
           discount_cents: number
           discount_reason: string | null
           id: string
+          pay_type: string | null
           subtotal_cents: number
           tenant_id: string
           tip_cents: number
@@ -100,11 +103,14 @@ export type Database = {
         Insert: {
           appointment_id: string
           barber_id: string
+          commission_cents?: number | null
+          commission_rate_bps?: number | null
           created_at?: string
           created_by?: string | null
           discount_cents?: number
           discount_reason?: string | null
           id?: string
+          pay_type?: string | null
           subtotal_cents: number
           tenant_id: string
           tip_cents?: number
@@ -116,11 +122,14 @@ export type Database = {
         Update: {
           appointment_id?: string
           barber_id?: string
+          commission_cents?: number | null
+          commission_rate_bps?: number | null
           created_at?: string
           created_by?: string | null
           discount_cents?: number
           discount_reason?: string | null
           id?: string
+          pay_type?: string | null
           subtotal_cents?: number
           tenant_id?: string
           tip_cents?: number
@@ -308,22 +317,31 @@ export type Database = {
       barber_compensation: {
         Row: {
           barber_id: string
-          commission_rate_bps: number
+          commission_rate_bps: number | null
           created_at: string
+          pay_type: string
+          salary_cents: number | null
+          salary_period: string | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
           barber_id: string
-          commission_rate_bps: number
+          commission_rate_bps?: number | null
           created_at?: string
+          pay_type?: string
+          salary_cents?: number | null
+          salary_period?: string | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
           barber_id?: string
-          commission_rate_bps?: number
+          commission_rate_bps?: number | null
           created_at?: string
+          pay_type?: string
+          salary_cents?: number | null
+          salary_period?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -337,6 +355,75 @@ export type Database = {
           },
           {
             foreignKeyName: "barber_compensation_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      barber_payouts: {
+        Row: {
+          barber_id: string
+          commission_cents: number
+          id: string
+          note: string | null
+          paid_at: string
+          paid_by: string | null
+          period_end: string
+          period_start: string
+          salary_cents: number
+          tenant_id: string
+          tips_cents: number
+          total_cents: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          barber_id: string
+          commission_cents?: number
+          id?: string
+          note?: string | null
+          paid_at?: string
+          paid_by?: string | null
+          period_end: string
+          period_start: string
+          salary_cents?: number
+          tenant_id: string
+          tips_cents?: number
+          total_cents: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          barber_id?: string
+          commission_cents?: number
+          id?: string
+          note?: string | null
+          paid_at?: string
+          paid_by?: string | null
+          period_end?: string
+          period_start?: string
+          salary_cents?: number
+          tenant_id?: string
+          tips_cents?: number
+          total_cents?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "barber_payouts_barber_fkey"
+            columns: ["tenant_id", "barber_id"]
+            isOneToOne: false
+            referencedRelation: "barbers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "barber_payouts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -918,6 +1005,16 @@ export type Database = {
         }
         Returns: Json
       }
+      record_barber_payout: {
+        Args: {
+          _barber_id: string
+          _note?: string
+          _period_end: string
+          _period_start: string
+          _salary_cents?: number
+        }
+        Returns: Json
+      }
       set_appointment_status: {
         Args: {
           _appointment_id: string
@@ -933,6 +1030,10 @@ export type Database = {
       set_business_hours: {
         Args: { _intervals: Json; _tenant_id: string }
         Returns: undefined
+      }
+      void_barber_payout: {
+        Args: { _payout_id: string; _reason: string }
+        Returns: Json
       }
       void_charge: {
         Args: { _charge_id: string; _reason: string }
