@@ -4,8 +4,7 @@
  * Teléfono: los ítems `primary` van en la barra inferior (al alcance del
  * pulgar) y el resto en la pestaña "Más". Escritorio: todos en la barra lateral.
  *
- * Solo se listan pantallas que existen. Clientes, Estadísticas y
- * Configuración se agregarán cuando se construyan sus Steps (antes daban 404).
+ * Solo se listan pantallas que existen.
  */
 
 import type { MemberRole } from "@/lib/auth";
@@ -27,7 +26,9 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Horarios", href: "/dashboard/horarios", icon: "clock", primary: true },
   { label: "Barberos", href: "/dashboard/barberos", icon: "scissors" },
   { label: "Servicios", href: "/dashboard/servicios", icon: "sparkles" },
-  { label: "Ganancias", href: "/dashboard/ganancias", icon: "chart" },
+  { label: "Clientes", href: "/dashboard/clientes", icon: "users" },
+  { label: "Estadísticas", href: "/dashboard/estadisticas", icon: "chart" },
+  { label: "Ganancias", href: "/dashboard/ganancias", icon: "cash" },
   { label: "Mi barbería", href: "/dashboard/ajustes", icon: "cog" },
 ];
 
@@ -37,7 +38,9 @@ const BARBER_NAV: NavItem[] = [
   { label: "Inicio", href: "/dashboard", icon: "home", primary: true },
   { label: "Mi agenda", shortLabel: "Agenda", href: "/dashboard/citas", icon: "calendar", primary: true },
   { label: "Mi horario", shortLabel: "Horario", href: "/dashboard/horarios", icon: "clock", primary: true },
-  { label: "Mis ganancias", href: "/dashboard/ganancias", icon: "chart" },
+  { label: "Mis clientes", href: "/dashboard/clientes", icon: "users" },
+  { label: "Mis estadísticas", href: "/dashboard/estadisticas", icon: "chart" },
+  { label: "Mis ganancias", href: "/dashboard/ganancias", icon: "cash" },
 ];
 
 export function getNavForRole(role: MemberRole): NavItem[] {

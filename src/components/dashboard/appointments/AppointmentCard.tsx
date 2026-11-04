@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import {
   WALK_IN_WARNING_LABELS,
@@ -28,6 +29,7 @@ export interface AgendaAppointment {
   startIso: string;
   endIso: string;
   status: AppointmentStatus;
+  clientId: string;
   clientName: string;
   clientPhone: string | null;
   services: string[];
@@ -118,7 +120,12 @@ export function AppointmentCard({
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
             <div className="min-w-0">
               <h3 className={cn("truncate font-display text-lg text-foreground", closed && "text-muted")}>
-                {a.clientName}
+                <Link
+                  href={`/dashboard/clientes/${a.clientId}`}
+                  className="underline-offset-4 transition-colors hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  {a.clientName}
+                </Link>
               </h3>
               <p className="mt-0.5 text-sm font-sans text-muted">
                 {a.services.length > 0 ? a.services.join(" + ") : "Servicio no registrado"}

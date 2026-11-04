@@ -997,6 +997,20 @@ export type Database = {
               slot_start: string
             }[]
           }
+      get_business_stats: {
+        Args: { _from: string; _tenant_id: string; _to: string }
+        Returns: Json
+      }
+      get_clients: {
+        Args: {
+          _client_id?: string
+          _limit?: number
+          _offset?: number
+          _search?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       get_public_tenant: { Args: { _slug: string }; Returns: Json }
       move_appointment: {
         Args: {
@@ -1033,6 +1047,14 @@ export type Database = {
       set_business_hours: {
         Args: { _intervals: Json; _tenant_id: string }
         Returns: undefined
+      }
+      set_client_note: {
+        Args: { _client_id: string; _notes: string }
+        Returns: string
+      }
+      update_client: {
+        Args: { _client_id: string; _full_name: string; _phone: string }
+        Returns: Json
       }
       update_tenant_messaging: {
         Args: { _templates?: Json; _tenant_id: string; _whatsapp_phone: string }
