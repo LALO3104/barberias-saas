@@ -172,6 +172,44 @@ select pg_temp.check('la foto aparece en la página pública',
   (select public.get_public_tenant('test-lp-k')::text like '%https://example.com/p2.jpg%'));
 
 -- =============================================================================
+-- 3. El barbero personaliza su tarjeta (migración 20261108090000)
+-- =============================================================================
+select pg_temp.as_user('ac000000-0000-0000-0000-000000000002');
+select pg_temp.expect_ok('cambia nombre, puesto y descripción', $q$
+  update public.barbers set display_name = 'Luis', role_title = 'Fades', bio = 'Diez años de oficio'
+  where id = 'bc000000-0000-0000-0000-000000000001'
+$q$);
+select pg_temp.expect_error('nombre vacío → 23514', $q$
+  update public.barbers set display_name = '   ' where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, '23514');
+select pg_temp.expect_error('nombre de más de 80 → 23514', $q$
+  update public.barbers set display_name = repeat('a', 81) where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, '23514');
+select pg_temp.expect_error('puesto de más de 80 → 23514', $q$
+  update public.barbers set role_title = repeat('a', 81) where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, '23514');
+select pg_temp.expect_error('descripción de más de 300 → 23514', $q$
+  update public.barbers set bio = repeat('a', 301) where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, '23514');
+select pg_temp.expect_error('no se desactiva a sí mismo', $q$
+  update public.barbers set is_active = false where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, 'P0001');
+select pg_temp.expect_error('no cambia su orden', $q$
+  update public.barbers set sort_order = 99 where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, 'P0001');
+select pg_temp.expect_error('no se quita la cuenta', $q$
+  update public.barbers set user_id = null where id = 'bc000000-0000-0000-0000-000000000001'
+$q$, 'P0001');
+update public.barbers set display_name = 'Hackeado', bio = 'x' where id = 'bc000000-0000-0000-0000-000000000002';
+select pg_temp.as_postgres();
+select pg_temp.check('no edita la tarjeta de otro barbero',
+  (select display_name = 'P2' and bio is null from public.barbers where id = 'bc000000-0000-0000-0000-000000000002'));
+select pg_temp.as_user(null);
+select pg_temp.check('la página pública muestra su nombre, puesto y descripción',
+  (select r::text like '%Luis%' and r::text like '%Fades%' and r::text like '%Diez años de oficio%'
+   from (select public.get_public_tenant('test-lp-k') as r) x));
+
+-- =============================================================================
 -- Reporte
 -- =============================================================================
 select pg_temp.as_postgres();

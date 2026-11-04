@@ -55,6 +55,9 @@ function parseSupabaseError(error: { message: string }): string {
   ) {
     return "El nombre del barbero no puede estar vacío.";
   }
+  if (error.message.includes("barbers_public_profile_lengths")) {
+    return "Nombre y puesto: máximo 80 caracteres. Descripción: máximo 300.";
+  }
   if (error.message.includes("barbers_photo_url_https")) {
     return "La foto debe ser un enlace que empiece con https://";
   }
@@ -293,27 +296,44 @@ export async function setBarberWhatsAppAction(barberId: unknown, phone: unknown)
   return { success: true };
 }
 
-/** El barbero cambia su foto. RLS y el trigger limitan la edición a su perfil. */
-export async function setMyPhotoAction(url: unknown): Promise<BarberActionState> {
+/**
+ * El barbero edita su tarjeta pública. Solo campos explícitos; RLS y el trigger
+ * limitan la edición a su propio perfil.
+ */
+export async function setMyProfileAction(input: unknown): Promise<BarberActionState> {
   const supabase = await getSupabaseServer();
   const authUser = supabase ? await getAuthenticatedUser(supabase) : null;
   const membership = authUser?.activeMembership;
   if (!supabase || !authUser || !membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
 
-  const clean = typeof url === "string" ? url.trim() : "";
-  if (clean && (clean.length > 1000 || !/^https:\/\/\S+$/.test(clean))) {
+  const data = (input ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const name = text(data.name);
+  const role = text(data.role);
+  const bio = text(data.bio);
+  const photoUrl = text(data.photoUrl);
+
+  if (!name || name.length > 80) return { error: "Escribe un nombre de 1 a 80 caracteres." };
+  if (role.length > 80) return { error: "El puesto no puede superar 80 caracteres." };
+  if (bio.length > 300) return { error: "La descripción no puede superar 300 caracteres." };
+  if (photoUrl && (photoUrl.length > 1000 || !/^https:\/\/\S+$/.test(photoUrl))) {
     return { error: "La foto debe ser un enlace que empiece con https://" };
   }
 
-  const { data, error } = await supabase
+  const { data: updated, error } = await supabase
     .from("barbers")
-    .update({ photo_url: clean || null })
+    .update({
+      display_name: name,
+      role_title: role || null,
+      bio: bio || null,
+      photo_url: photoUrl || null,
+    })
     .eq("tenant_id", membership.tenantId)
     .eq("user_id", authUser.id)
     .select("id");
 
   if (error) return { error: parseSupabaseError(error) };
-  if (!data || data.length === 0) return { error: "Tu cuenta no está ligada a un perfil de barbero." };
+  if (!updated || updated.length === 0) return { error: "Tu cuenta no está ligada a un perfil de barbero." };
 
   revalidatePath("/dashboard/ajustes");
   revalidatePath("/dashboard/barberos");

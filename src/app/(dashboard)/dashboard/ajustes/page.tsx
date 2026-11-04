@@ -5,7 +5,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { MESSAGE_KEYS, parseTemplates, templateFor, type MessageKey } from "@/lib/whatsapp";
 import { MessagingSettings } from "@/components/dashboard/settings/MessagingSettings";
 import { MyWhatsAppForm } from "@/components/dashboard/settings/MyWhatsAppForm";
-import { MyPhotoForm } from "@/components/dashboard/settings/MyPhotoForm";
+import { MyProfileForm } from "@/components/dashboard/settings/MyProfileForm";
 import { LocationForm } from "@/components/dashboard/settings/LocationForm";
 
 export const metadata: Metadata = {
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 /**
  * Admin: ubicación, número de WhatsApp de la barbería y mensajes
- * predeterminados. Barbero: "Mi perfil", su foto y su WhatsApp.
+ * predeterminados. Barbero: "Mi perfil", su tarjeta pública y su WhatsApp.
  */
 export default async function AjustesPage() {
   const supabase = await getSupabaseServer();
@@ -26,7 +26,7 @@ export default async function AjustesPage() {
   if (authUser.activeMembership.role !== "admin") {
     const { data: me } = await supabase
       .from("barbers")
-      .select("id, display_name, whatsapp_phone, photo_url")
+      .select("id, display_name, role_title, bio, whatsapp_phone, photo_url")
       .eq("tenant_id", authUser.activeMembership.tenantId)
       .eq("user_id", authUser.id)
       .maybeSingle();
@@ -34,7 +34,7 @@ export default async function AjustesPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-section font-display text-foreground">Mi perfil</h1>
-        <MyPhotoForm name={me.display_name} photoUrl={me.photo_url} />
+        <MyProfileForm name={me.display_name} role={me.role_title} bio={me.bio} photoUrl={me.photo_url} />
         <MyWhatsAppForm barberId={me.id} phone={me.whatsapp_phone} />
       </div>
     );

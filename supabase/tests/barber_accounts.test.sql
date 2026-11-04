@@ -253,8 +253,8 @@ $q$, '23514');
 select pg_temp.expect_error('UPDATE directo con formato inválido → 23514', $q$
   update public.barbers set whatsapp_phone = '123' where id = 'bb000000-0000-0000-0000-000000000002'
 $q$, '23514');
-select pg_temp.expect_error('sigue sin poder cambiar su nombre', $q$
-  update public.barbers set display_name = 'Otro' where id = 'bb000000-0000-0000-0000-000000000002'
+select pg_temp.expect_error('sigue sin poder desactivarse', $q$
+  update public.barbers set is_active = false where id = 'bb000000-0000-0000-0000-000000000002'
 $q$, 'P0001');
 
 select pg_temp.as_user('ab000000-0000-0000-0000-000000000001');

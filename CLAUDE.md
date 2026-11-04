@@ -61,7 +61,7 @@ src/app/
     horarios/                     admin: barbería y barberos · barber: su horario
     citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
     ganancias/                    admin "Ganancias" (reporte + pagos) · barber "Mis ganancias"
-    ajustes/                      admin "Mi barbería": ubicación, WhatsApp, mensajes · barber "Mi perfil": foto, WhatsApp
+    ajustes/                      admin "Mi barbería": ubicación, WhatsApp, mensajes · barber "Mi perfil": tarjeta pública, WhatsApp
     clientes/  clientes/[id]/     admin "Clientes" · barber "Mis clientes" (ficha, notas, historial)
     estadisticas/                 admin "Estadísticas" · barber "Mis estadísticas"
 src/lib/
@@ -108,7 +108,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 26 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 27 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -240,8 +240,10 @@ página pública: `book_appointment` lo devuelve solo tras reservar con él, y e
 botón final del cliente le escribe a él (si no, a `tenants.public_phone`).
 
 **Ubicación y fotos (Step 17):** la dirección pública solo cambia con
-`update_tenant_location` (admin). `barbers.photo_url` solo acepta `https://`; el
-barbero edita la suya con su sesión (RLS + trigger) y el admin cualquiera.
+`update_tenant_location` (admin). `barbers.photo_url` solo acepta `https://`. El
+barbero edita su tarjeta pública (nombre, puesto, descripción, foto) con su sesión
+(RLS + trigger, que le impiden tocar `is_active`, `sort_order`, `tenant_id` y
+`user_id`); límites 80/80/300 también en la base. El admin edita cualquiera.
 
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
