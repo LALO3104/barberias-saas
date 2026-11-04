@@ -354,7 +354,8 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 12. Publicación (Step 16)
 
-Cloudflare Workers con OpenNext + Supabase Free. El soporte de `proxy.ts` en
+Publicado en https://barberias.barberias.workers.dev (Cloudflare Workers con
+OpenNext + Supabase Free). El soporte de `proxy.ts` en
 OpenNext es experimental: tras actualizar Next o el adaptador, probar con
 `cf:preview` y con sesión iniciada. Vercel Hobby no permite uso comercial.
 
