@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Reveal } from "@/components/animations/Reveal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -36,6 +37,9 @@ const spacingTokens = [
  * aquí a propósito — eso llega después, componente por componente.
  */
 export default function Home() {
+  // Herramienta interna: no se publica.
+  if (process.env.NODE_ENV === "production") notFound();
+
   return (
     <main className="flex-1">
       <Container className="py-[var(--spacing-section)]">

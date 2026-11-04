@@ -156,7 +156,7 @@ export default async function TenantPublicPage(
 
       <Footer
         tenantName={tenant.name}
-        nav={nav}
+        nav={[...nav, { label: "Aviso de privacidad", href: `/${tenant.slug}/privacidad` }]}
         location={{
           addressLine: [tenant.address_line, tenant.city, tenant.state]
             .filter(Boolean)

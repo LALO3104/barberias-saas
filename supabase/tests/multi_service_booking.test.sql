@@ -176,11 +176,11 @@ select pg_temp.check('UNIQUE (tenant_id, appointment_id, service_id) existe',
   exists (select 1 from pg_constraint where conrelid = 'public.appointment_services'::regclass
           and conname = 'appointment_services_appointment_service_key' and contype = 'u'));
 
-select pg_temp.check('firmas nuevas y antiguas existen (4 funciones)',
+select pg_temp.check('firmas nuevas existen y las antiguas ya no (Step 16)',
   to_regprocedure('public.get_available_slots(text, uuid, uuid[], date)') is not null
-  and to_regprocedure('public.get_available_slots(text, uuid, uuid, date)') is not null
+  and to_regprocedure('public.get_available_slots(text, uuid, uuid, date)') is null
   and to_regprocedure('public.book_appointment(text, uuid, uuid[], timestamptz, text, text, text)') is not null
-  and to_regprocedure('public.book_appointment(text, uuid, uuid, timestamptz, text, text, text)') is not null);
+  and to_regprocedure('public.book_appointment(text, uuid, uuid, timestamptz, text, text, text)') is null);
 
 select pg_temp.check('firmas nuevas: SECURITY DEFINER y search_path vacío',
   (select bool_and(p.prosecdef and p.proconfig @> array['search_path=""'])
@@ -196,13 +196,11 @@ select pg_temp.check('get_available_slots nueva es STABLE; book_appointment nuev
   (select provolatile from pg_proc where oid = 'public.get_available_slots(text, uuid, uuid[], date)'::regprocedure) = 's'
   and (select provolatile from pg_proc where oid = 'public.book_appointment(text, uuid, uuid[], timestamptz, text, text, text)'::regprocedure) = 'v');
 
-select pg_temp.check('anon y authenticated pueden ejecutar las 4 funciones públicas',
+select pg_temp.check('anon y authenticated pueden ejecutar las funciones públicas',
   has_function_privilege('anon',          'public.get_available_slots(text, uuid, uuid[], date)', 'execute')
   and has_function_privilege('authenticated', 'public.get_available_slots(text, uuid, uuid[], date)', 'execute')
   and has_function_privilege('anon',          'public.book_appointment(text, uuid, uuid[], timestamptz, text, text, text)', 'execute')
-  and has_function_privilege('authenticated', 'public.book_appointment(text, uuid, uuid[], timestamptz, text, text, text)', 'execute')
-  and has_function_privilege('anon',          'public.get_available_slots(text, uuid, uuid, date)', 'execute')
-  and has_function_privilege('anon',          'public.book_appointment(text, uuid, uuid, timestamptz, text, text, text)', 'execute'));
+  and has_function_privilege('authenticated', 'public.book_appointment(text, uuid, uuid[], timestamptz, text, text, text)', 'execute'));
 
 select pg_temp.check('helpers privados: sin EXECUTE para anon ni authenticated',
   not exists (
@@ -254,31 +252,6 @@ begin
   perform pg_temp.check('rejilla: último slot 13:50 local (termina a las 14:00)', _last = pg_temp.lt('2030-06-05 13:50'), _last::text);
   perform pg_temp.check('rejilla: todos alineados a 5 min locales', _misaligned = 0, _misaligned::text);
 end $$;
-
--- Firma antigua: misma lista, solo múltiplos de 15 min.
-do $$
-declare _n int; _bad int; _diff int;
-begin
-  select count(*),
-         count(*) filter (where extract(minute from slot_start at time zone 'America/Mexico_City')::int % 15 <> 0)
-    into _n, _bad
-  from public.get_available_slots('test-ms-k', 'b2000000-0000-0000-0000-000000000001',
-                                  '52000000-0000-0000-0000-000000000003'::uuid, '2030-06-05');
-  perform pg_temp.check('envoltorio slots (uuid): 20 slots de 15 min (09:00 … 13:45)', _n = 20 and _bad = 0, format('%s slots, %s no alineados', _n, _bad));
-
-  select count(*) into _diff from (
-    (select slot_start from public.get_available_slots('test-ms-k', 'b2000000-0000-0000-0000-000000000001',
-                                  '52000000-0000-0000-0000-000000000003'::uuid, '2030-06-05')
-     except
-     select slot_start from public.get_available_slots('test-ms-k', 'b2000000-0000-0000-0000-000000000001',
-                                  array['52000000-0000-0000-0000-000000000003'::uuid], '2030-06-05'))
-  ) as d;
-  perform pg_temp.check('envoltorio slots (uuid): subconjunto exacto de la firma nueva', _diff = 0, _diff::text);
-end $$;
-
-select pg_temp.expect_error('envoltorio slots (uuid): servicio NULL → P0002 (como antes)', $q$
-  select * from public.get_available_slots('test-ms-k', 'b2000000-0000-0000-0000-000000000001', null::uuid, '2030-06-05')
-$q$, 'P0002');
 
 -- Horario del barbero (martes: local 24 h, K1 10:00–12:00).
 select pg_temp.check('horario del barbero: martes con 30 min → 10:00 … 11:30',
@@ -699,59 +672,6 @@ begin
     perform pg_temp.check('pasado: reservar hace 1 h → 23514', sqlstate = '23514', sqlstate || ' ' || sqlerrm);
   end;
 end $$;
-
--- =============================================================================
--- 8. Envoltorio antiguo de book_appointment (firma _service_id uuid)
--- =============================================================================
-select pg_temp.as_user(null);
-do $$
-declare _r jsonb; _keys text[];
-begin
-  _r := public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', '52000000-0000-0000-0000-000000000002'::uuid,
-                                pg_temp.lt('2030-06-05 10:00'), 'Cliente Antiguo', '5544440001', 'nota');
-  select array_agg(k order by k) into _keys from jsonb_object_keys(_r) k;
-  perform pg_temp.check('envoltorio reserva: claves de la respuesta ANTIGUA',
-    _keys = array['appointment_id','barber_id','client','end_at','service','start_at','status'], _keys::text);
-  perform pg_temp.check('envoltorio reserva: service = {id, name, price_cents, duration_minutes} sin position',
-    (select array_agg(k order by k) from jsonb_object_keys(_r->'service') k) = array['duration_minutes','id','name','price_cents']
-    and (_r->'service'->>'id')::uuid = '52000000-0000-0000-0000-000000000002'
-    and _r->'service'->>'name' = 'Barba' and (_r->'service'->>'price_cents')::int = 15000
-    and (_r->'service'->>'duration_minutes')::int = 20,
-    _r->>'service');
-  perform pg_temp.check('envoltorio reserva: end_at = start_at + 20 min',
-    (_r->>'end_at')::timestamptz - (_r->>'start_at')::timestamptz = interval '20 minutes');
-  perform pg_temp.as_postgres();
-  perform pg_temp.check('envoltorio reserva: 1 línea, nota guardada',
-    (select count(*) from public.appointment_services where appointment_id = (_r->>'appointment_id')::uuid) = 1
-    and exists (select 1 from public.appointments where id = (_r->>'appointment_id')::uuid and client_note = 'nota'));
-exception when others then
-  perform pg_temp.as_postgres();
-  perform pg_temp.check('envoltorio reserva funciona', false, sqlstate || ' ' || sqlerrm);
-end $$;
-
-select pg_temp.as_user(null);
-select pg_temp.expect_error('envoltorio reserva: servicio NULL → P0002 (como antes)', $q$
-  select public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', null::uuid,
-    pg_temp.lt('2030-06-05 11:00'), 'X', '5544440002', null)
-$q$, 'P0002');
-select pg_temp.expect_error('envoltorio reserva: servicio inactivo → P0002', $q$
-  select public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', '52000000-0000-0000-0000-000000000009'::uuid,
-    pg_temp.lt('2030-06-05 11:00'), 'X', '5544440002', null)
-$q$, 'P0002');
-select pg_temp.expect_error('envoltorio reserva: traslape → P0003', $q$
-  select public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', '52000000-0000-0000-0000-000000000001'::uuid,
-    pg_temp.lt('2030-06-05 10:00'), 'X', '5544440002', null)
-$q$, 'P0003');
--- Comportamiento heredado (documentado): la firma antigua ya no exige 15 min,
--- acepta la rejilla de 5 min de la firma nueva.
-select pg_temp.expect_ok('envoltorio reserva: acepta inicio alineado a 5 min (11:05)', $q$
-  select public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', '52000000-0000-0000-0000-000000000003'::uuid,
-    pg_temp.lt('2030-06-05 11:05'), 'X', '5544440003', null)
-$q$);
-select pg_temp.expect_error('literal sin tipo en la posición del servicio: ambiguo (42725)', $q$
-  select public.book_appointment('test-ms-k', 'b2000000-0000-0000-0000-000000000001', '52000000-0000-0000-0000-000000000003',
-    pg_temp.lt('2030-06-05 13:00'), 'X', '5544440004', null)
-$q$, '42725');
 
 -- =============================================================================
 -- 9. Migration B: tope de 5 líneas y UNIQUE por inserción directa
