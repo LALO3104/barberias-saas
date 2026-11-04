@@ -29,7 +29,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp).
 
 ## 2. Stack y comandos
 
@@ -59,6 +59,7 @@ src/app/
     horarios/                     admin: barbería y barberos · barber: su horario
     citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
     ganancias/                    admin "Ganancias" (reporte + pagos) · barber "Mis ganancias"
+    ajustes/                      solo admin "Mi barbería": WhatsApp y mensajes
 src/lib/
   auth.ts                         getAuthenticatedUser() → activeMembership {tenantId, role}
   supabase/server.ts, client.ts   clientes con la sesión del usuario (RLS)
@@ -67,6 +68,7 @@ src/lib/
   schedule.ts, format.ts          horarios, formatos, getTodayInTimezone()
   public-api.ts                   RPC públicas de la reserva (desde el navegador)
   dashboard-nav.ts                menú por rol
+  whatsapp.ts                     plantillas, variables y enlaces wa.me
 src/components/                   ui/, dashboard/*, public/*, sections/, animations/
   dashboard/MobileNav.tsx         teléfono: cabecera + barra inferior + panel "Más"
   dashboard/Sidebar.tsx           escritorio (lg+)
@@ -100,7 +102,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 21 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 22 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -198,6 +200,16 @@ sin traslape por barbero → BA011). Solo el admin registra
 (`record_barber_payout`) y anula (`void_barber_payout`, motivo obligatorio);
 el barbero solo ve los suyos. Pantalla `/dashboard/ganancias`.
 
+**WhatsApp (Step 14):** sin API ni costo: enlaces `wa.me` con texto ya escrito
+(`lib/whatsapp.ts`). En la agenda, botón WhatsApp por cita (confirmación,
+recordatorio, cambio de horario; cancelación si está cancelada), editable antes
+de enviar. Al terminar una reserva pública, botón para escribir a
+`tenants.public_phone`. Plantillas en `tenants.message_templates` (solo las
+personalizadas; claves `confirm|reminder|cancel|reschedule`, ≤ 1000, no se
+exponen en la página pública). Número y plantillas solo se cambian con
+`update_tenant_messaging` (admin; normaliza el teléfono); `authenticated`
+sigue sin UPDATE sobre esas columnas.
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -274,7 +286,7 @@ Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
 de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -313,5 +325,5 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
 - No existen todavía:
-  estadísticas, avisos por WhatsApp, módulo de clientes. El orden se decide
+  estadísticas, módulo de clientes. El orden se decide
   inspeccionando dependencias, no por suposición.

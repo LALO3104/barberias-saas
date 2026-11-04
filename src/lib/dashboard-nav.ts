@@ -28,6 +28,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Barberos", href: "/dashboard/barberos", icon: "scissors" },
   { label: "Servicios", href: "/dashboard/servicios", icon: "sparkles" },
   { label: "Ganancias", href: "/dashboard/ganancias", icon: "chart" },
+  { label: "Mi barbería", href: "/dashboard/ajustes", icon: "cog" },
 ];
 
 // "Mi agenda" usa la misma ruta que "Citas" del admin: la página filtra por rol
