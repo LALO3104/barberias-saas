@@ -1,0 +1,18 @@
+# Supabase Free pausa el proyecto tras 7 días sin actividad. Esta visita
+# periódica a la página pública (que consulta la base) lo mantiene despierto.
+# Si cambia la dirección del sitio, actualizarla aquí.
+name: Mantener activa la base de datos
+
+on:
+  schedule:
+    - cron: "0 12 */2 * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Visitar la página pública
+        run: curl -fsS -o /dev/null --max-time 60 "https://barberias.barberias.workers.dev/kings"

@@ -39,6 +39,7 @@ middleware) · React 19 · TypeScript · Tailwind CSS v4 · GSAP · Supabase
 
 ```
 npm run dev | lint | typecheck | build      # typecheck = next typegen && tsc --noEmit
+npm run cf:build | cf:preview | cf:deploy   # Cloudflare (OpenNext), ver §12
 ```
 
 `build` puede fallar en entornos sin red al descargar Inter/Playfair Display
@@ -48,8 +49,9 @@ de Google Fonts: es un fallo externo, no del código; reportarlo así.
 
 ```
 src/app/
-  (public)/page.tsx               landing raíz (demo)
+  (public)/page.tsx               redirige a /kings
   [slug]/page.tsx                 landing pública por barbería (/kings)
+  [slug]/privacidad/page.tsx      aviso de privacidad con los datos de la barbería
   (auth)/                         login, forgot/reset password, callback
   (dashboard)/layout.tsx          exige sesión + membresía; nav por rol; manifest PWA
   pwa/icon/[size]/route.tsx       íconos de la app instalable (192, 512, maskable, apple)
@@ -106,7 +108,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 23 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 24 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -261,8 +263,9 @@ y `book_appointment(…, _service_ids uuid[], …)`: 1 a 5 servicios, rejilla de
 (`private.lock_barber_agenda`) antes de revalidar. Helpers privados
 reutilizables para walk-ins: `resolve_booking_services`, `within_business_hours`,
 `within_barber_hours`, `overlaps_schedule_block`, `overlaps_active_appointment`.
-Las firmas viejas (`_service_id uuid`) son envoltorios temporales: eliminarlas
-en una migración cuando nada las use.
+Anti-spam (Step 16): máximo 3 citas futuras activas por cliente en
+`book_appointment` (BA013, con lock por cliente); nombre ≤ 120, nota ≤ 500. Solo
+aplica a la reserva pública; el personal no tiene ese límite.
 
 ## 8. Códigos de error que la app traduce
 
@@ -284,6 +287,7 @@ en una migración cuando nada las use.
 | `BA010` | cita completada sin cobro activo (trigger diferido) |
 | `BA011` | ya hay un pago a ese barbero que cubre parte del periodo |
 | `BA012` | ya hay otro cliente con ese teléfono |
+| `BA013` | reserva pública: ese cliente ya tiene 3 citas futuras activas |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -304,7 +308,7 @@ de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. En Windows, correr `psql` con
 `PGCLIENTENCODING=UTF8` o los acentos de los archivos llegan deformados. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -336,11 +340,29 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 - `my_barber_id` no revisa `is_active`.
 - `activeMembership` toma la primera membresía sin orden fijo.
 - El barbero aún puede crear clientes por API directa (`clients_insert`); la app no lo usa.
-- Reservas públicas sin anti-spam y con límites de longitud mejorables; el
-  nombre del cliente se sobrescribe por teléfono.
+- Reservas públicas: el límite por teléfono no frena números inventados (no hay
+  captcha ni verificación); el nombre del cliente se sobrescribe por teléfono.
 - Citas `cancelled`/`no_show` aún aceptan servicios; agregar un servicio por
   inserción directa (no por `move_appointment`) no extiende `end_at`.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
 - No existen todavía: registro de gastos del negocio. El orden se decide
   inspeccionando dependencias, no por suposición.
+- Avisos de rendimiento de Supabase sin atender (no urgentes a esta escala):
+  índices de llaves foráneas y `auth.uid()` sin `(select …)` en 4 policies.
+- El aviso de privacidad es un texto base sin revisión legal.
+
+## 12. Publicación (Step 16)
+
+Publicado en https://barberias.barberias.workers.dev (Cloudflare Workers con
+OpenNext + Supabase Free). El soporte de `proxy.ts` en
+OpenNext es experimental: tras actualizar Next o el adaptador, probar con
+`cf:preview` y con sesión iniciada. Vercel Hobby no permite uso comercial.
+
+- `NEXT_PUBLIC_*` se fijan al compilar: `npm run cf:deploy` lee `.env.local`, y
+  `NEXT_PUBLIC_SITE_URL` debe apuntar a la dirección pública.
+- En Supabase (Authentication → URL Configuration), la dirección pública debe
+  estar como Site URL y en Redirect URLs, o falla la recuperación de contraseña.
+- Supabase Free: se pausa tras 7 días sin actividad (`keepalive.yml` lo evita visitando
+  la página; si cambia la dirección, actualizarla ahí) y **no tiene respaldos automáticos**.
+  Con clientes reales, recomendar Supabase Pro.

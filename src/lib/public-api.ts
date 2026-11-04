@@ -36,6 +36,7 @@ export const ERROR_CODES = {
   NOT_FOUND: "P0002",
   SLOT_TAKEN: "P0003",
   VALIDATION: "23514", // check_violation
+  TOO_MANY_BOOKINGS: "BA013",
 } as const;
 
 // ─── get_public_tenant ──────────────────────────────────────────────────────
@@ -191,6 +192,12 @@ export async function bookAppointment(
     }
     if (error.code === ERROR_CODES.NOT_FOUND) {
       throw new PublicApiError(UNAVAILABLE_MESSAGE, error.code);
+    }
+    if (error.code === ERROR_CODES.TOO_MANY_BOOKINGS) {
+      throw new PublicApiError(
+        "Ya tienes 3 citas próximas con este teléfono. Para agendar otra, comunícate con la barbería.",
+        error.code
+      );
     }
     // check_violation — validaciones del backend (teléfono, servicios, etc.)
     if (error.code === ERROR_CODES.VALIDATION) {

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { ImagePlaceholder } from "@/components/ui/ImagePlaceholder";
 
 interface PublicBarberCardProps {
@@ -22,13 +21,12 @@ export function PublicBarberCard({
     <div className="group rounded-card border border-border bg-background-secondary overflow-hidden">
       {photoUrl ? (
         <div className="relative aspect-[3/4] overflow-hidden">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element -- fotos de barberos con <img> (CLAUDE.md §10) */}
+          <img
             src={photoUrl}
             alt={name}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
-            unoptimized
+            loading="lazy"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         </div>
       ) : (

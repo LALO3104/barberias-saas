@@ -923,31 +923,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      book_appointment:
-        | {
-            Args: {
-              _barber_id: string
-              _client_name: string
-              _client_note?: string
-              _client_phone: string
-              _service_id: string
-              _slug: string
-              _start_at: string
-            }
-            Returns: Json
-          }
-        | {
-            Args: {
-              _barber_id: string
-              _client_name: string
-              _client_note?: string
-              _client_phone: string
-              _service_ids: string[]
-              _slug: string
-              _start_at: string
-            }
-            Returns: Json
-          }
+      book_appointment: {
+        Args: {
+          _barber_id: string
+          _client_name: string
+          _client_note?: string
+          _client_phone: string
+          _service_ids: string[]
+          _slug: string
+          _start_at: string
+        }
+        Returns: Json
+      }
       charge_appointment: {
         Args: {
           _appointment_id: string
@@ -974,29 +961,17 @@ export type Database = {
         Args: { _barber_id: string; _phone: string }
         Returns: Json
       }
-      get_available_slots:
-        | {
-            Args: {
-              _barber_id: string
-              _service_id: string
-              _slug: string
-              _target_date: string
-            }
-            Returns: {
-              slot_start: string
-            }[]
-          }
-        | {
-            Args: {
-              _barber_id: string
-              _service_ids: string[]
-              _slug: string
-              _target_date: string
-            }
-            Returns: {
-              slot_start: string
-            }[]
-          }
+      get_available_slots: {
+        Args: {
+          _barber_id: string
+          _service_ids: string[]
+          _slug: string
+          _target_date: string
+        }
+        Returns: {
+          slot_start: string
+        }[]
+      }
       get_business_stats: {
         Args: { _from: string; _tenant_id: string; _to: string }
         Returns: Json

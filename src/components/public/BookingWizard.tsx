@@ -452,6 +452,7 @@ export function BookingWizard({ tenant, onSuccess }: BookingWizardProps) {
               onChangePhone={(v) => dispatch({ type: "SET_CLIENT_PHONE", value: v })}
               onChangeNote={(v) => dispatch({ type: "SET_CLIENT_NOTE", value: v })}
               onSubmit={() => canContinueData(state) && goTo("confirmar")}
+              privacyHref={`/${tenant.slug}/privacidad`}
             />
           )}
 
@@ -1154,6 +1155,7 @@ function StepClientData({
   onChangePhone,
   onChangeNote,
   onSubmit,
+  privacyHref,
 }: {
   name: string;
   phone: string;
@@ -1162,6 +1164,7 @@ function StepClientData({
   onChangePhone: (v: string) => void;
   onChangeNote: (v: string) => void;
   onSubmit: () => void;
+  privacyHref: string;
 }) {
   // Pre-chequeo amable: al menos 10 dígitos. La normalización y validación
   // real (E.164) ocurren en el servidor, dentro de book_appointment.
@@ -1238,6 +1241,13 @@ function StepClientData({
           className={cn(INPUT, "h-auto resize-none py-3")}
         />
       </div>
+      <p className="text-sm font-sans text-muted">
+        Al continuar aceptas nuestro{" "}
+        <a href={privacyHref} target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-4">
+          aviso de privacidad
+        </a>
+        .
+      </p>
       {/* Enter en el teclado del teléfono envía el formulario. */}
       <button type="submit" className="sr-only" tabIndex={-1}>
         Revisar reserva
