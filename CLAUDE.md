@@ -61,7 +61,7 @@ src/app/
     horarios/                     admin: barbería y barberos · barber: su horario
     citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
     ganancias/                    admin "Ganancias" (reporte + pagos) · barber "Mis ganancias"
-    ajustes/                      solo admin "Mi barbería": WhatsApp y mensajes
+    ajustes/                      admin "Mi barbería": ubicación, WhatsApp, mensajes · barber "Mi perfil": foto, WhatsApp
     clientes/  clientes/[id]/     admin "Clientes" · barber "Mis clientes" (ficha, notas, historial)
     estadisticas/                 admin "Estadísticas" · barber "Mis estadísticas"
 src/lib/
@@ -108,7 +108,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 25 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 26 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -239,6 +239,10 @@ no da acceso a nada: sin invitación no hay membresía. WhatsApp del barbero en
 página pública: `book_appointment` lo devuelve solo tras reservar con él, y el
 botón final del cliente le escribe a él (si no, a `tenants.public_phone`).
 
+**Ubicación y fotos (Step 17):** la dirección pública solo cambia con
+`update_tenant_location` (admin). `barbers.photo_url` solo acepta `https://`; el
+barbero edita la suya con su sesión (RLS + trigger) y el admin cualquiera.
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -320,7 +324,7 @@ de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. En Windows, correr `psql` con
 `PGCLIENTENCODING=UTF8` o los acentos de los archivos llegan deformados. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`, `barber_accounts`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`, `barber_accounts`, `location_photos`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz

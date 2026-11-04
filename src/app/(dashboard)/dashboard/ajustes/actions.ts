@@ -61,3 +61,46 @@ export async function updateMessagingAction(input: unknown): Promise<SettingsRes
   const result = (saved ?? {}) as { public_phone?: string | null };
   return { success: true, phone: result.public_phone ?? null };
 }
+
+/** Dirección pública de la barbería (solo admin; la función SQL lo vuelve a exigir). */
+export async function updateLocationAction(input: unknown): Promise<SettingsResult> {
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  const authUser = await getAuthenticatedUser(supabase);
+  const membership = authUser?.activeMembership;
+  if (!membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (membership.role !== "admin") return { error: "Solo el administrador puede cambiar los ajustes." };
+
+  const data = (input ?? {}) as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  const address = text(data.address);
+  const city = text(data.city);
+  const state = text(data.state);
+  const postalCode = text(data.postalCode);
+  if (address.length > 200 || city.length > 80 || state.length > 80) {
+    return { error: "Alguno de los datos es demasiado largo." };
+  }
+  if (postalCode && !/^\d{5}$/.test(postalCode)) return { error: "El código postal debe tener 5 dígitos." };
+
+  const { data: tenant, error } = await supabase.rpc("update_tenant_location", {
+    _tenant_id: membership.tenantId,
+    _address_line: address,
+    _city: city,
+    _state: state,
+    _postal_code: postalCode,
+  });
+
+  if (error || !tenant) {
+    switch (error?.code) {
+      case "23514":
+        return { error: error.message };
+      case "42501":
+        return { error: "Solo el administrador puede cambiar los ajustes." };
+      default:
+        return { error: "No se pudo guardar la ubicación. Intenta de nuevo." };
+    }
+  }
+
+  revalidatePath("/dashboard/ajustes");
+  return { success: true };
+}

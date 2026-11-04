@@ -237,7 +237,7 @@ function HoursSection({
             <div className="rounded-card border border-border bg-background-secondary p-[var(--spacing-card)]">
               <h3 className="text-lg font-display text-foreground">Ubicación</h3>
               <div className="mt-4 space-y-2 text-body font-sans text-muted">
-                {address && <p>{address}</p>}
+                {address ? <p>{address}</p> : <p>Dirección próximamente.</p>}
                 {tenant.postal_code && <p>C.P. {tenant.postal_code}</p>}
                 {tenant.public_phone && (
                   <p>
@@ -248,6 +248,16 @@ function HoursSection({
                       {tenant.public_phone}
                     </a>
                   </p>
+                )}
+                {address && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tenant.name}, ${address}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex h-11 items-center rounded-button border border-accent/50 px-5 text-sm font-medium text-accent transition-[background-color,transform] duration-150 ease-out hover:bg-accent/10 active:scale-[0.97]"
+                  >
+                    Cómo llegar
+                  </a>
                 )}
               </div>
             </div>

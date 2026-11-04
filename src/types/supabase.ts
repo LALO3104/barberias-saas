@@ -1098,6 +1098,16 @@ export type Database = {
         Args: { _client_id: string; _full_name: string; _phone: string }
         Returns: Json
       }
+      update_tenant_location: {
+        Args: {
+          _address_line: string
+          _city: string
+          _postal_code: string
+          _state: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       update_tenant_messaging: {
         Args: { _templates?: Json; _tenant_id: string; _whatsapp_phone: string }
         Returns: Json

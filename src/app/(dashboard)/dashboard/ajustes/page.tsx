@@ -5,6 +5,8 @@ import { getAuthenticatedUser } from "@/lib/auth";
 import { MESSAGE_KEYS, parseTemplates, templateFor, type MessageKey } from "@/lib/whatsapp";
 import { MessagingSettings } from "@/components/dashboard/settings/MessagingSettings";
 import { MyWhatsAppForm } from "@/components/dashboard/settings/MyWhatsAppForm";
+import { MyPhotoForm } from "@/components/dashboard/settings/MyPhotoForm";
+import { LocationForm } from "@/components/dashboard/settings/LocationForm";
 
 export const metadata: Metadata = {
   title: "Mi barbería — Dashboard",
@@ -12,8 +14,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Admin: número de WhatsApp de la barbería y mensajes predeterminados (se
- * guardan con public.update_tenant_messaging). Barbero: "Mi perfil", su WhatsApp.
+ * Admin: ubicación, número de WhatsApp de la barbería y mensajes
+ * predeterminados. Barbero: "Mi perfil", su foto y su WhatsApp.
  */
 export default async function AjustesPage() {
   const supabase = await getSupabaseServer();
@@ -24,7 +26,7 @@ export default async function AjustesPage() {
   if (authUser.activeMembership.role !== "admin") {
     const { data: me } = await supabase
       .from("barbers")
-      .select("id, whatsapp_phone")
+      .select("id, display_name, whatsapp_phone, photo_url")
       .eq("tenant_id", authUser.activeMembership.tenantId)
       .eq("user_id", authUser.id)
       .maybeSingle();
@@ -32,6 +34,7 @@ export default async function AjustesPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-section font-display text-foreground">Mi perfil</h1>
+        <MyPhotoForm name={me.display_name} photoUrl={me.photo_url} />
         <MyWhatsAppForm barberId={me.id} phone={me.whatsapp_phone} />
       </div>
     );
@@ -39,7 +42,7 @@ export default async function AjustesPage() {
 
   const { data: tenant, error } = await supabase
     .from("tenants")
-    .select("name, public_phone, message_templates")
+    .select("name, public_phone, message_templates, address_line, city, state, postal_code")
     .eq("id", authUser.activeMembership.tenantId)
     .single();
 
@@ -61,8 +64,16 @@ export default async function AjustesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-section font-display text-foreground">Mi barbería</h1>
-        <p className="mt-1 text-body font-sans text-muted">WhatsApp y mensajes para tus clientes</p>
+        <p className="mt-1 text-body font-sans text-muted">Ubicación, WhatsApp y mensajes para tus clientes</p>
       </div>
+      <LocationForm
+        initial={{
+          address: tenant.address_line ?? "",
+          city: tenant.city ?? "",
+          state: tenant.state ?? "",
+          postalCode: tenant.postal_code ?? "",
+        }}
+      />
       <MessagingSettings tenantName={tenant.name} phone={tenant.public_phone} templates={templates} />
     </div>
   );

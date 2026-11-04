@@ -55,6 +55,9 @@ function parseSupabaseError(error: { message: string }): string {
   ) {
     return "El nombre del barbero no puede estar vacío.";
   }
+  if (error.message.includes("barbers_photo_url_https")) {
+    return "La foto debe ser un enlace que empiece con https://";
+  }
   if (error.message.includes("barbers_tenant_id_user_id_key")) {
     return "Este usuario ya tiene un perfil de barbero asignado en esta barbería.";
   }
@@ -287,5 +290,32 @@ export async function setBarberWhatsAppAction(barberId: unknown, phone: unknown)
 
   revalidatePath("/dashboard/barberos");
   revalidatePath("/dashboard/ajustes");
+  return { success: true };
+}
+
+/** El barbero cambia su foto. RLS y el trigger limitan la edición a su perfil. */
+export async function setMyPhotoAction(url: unknown): Promise<BarberActionState> {
+  const supabase = await getSupabaseServer();
+  const authUser = supabase ? await getAuthenticatedUser(supabase) : null;
+  const membership = authUser?.activeMembership;
+  if (!supabase || !authUser || !membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+
+  const clean = typeof url === "string" ? url.trim() : "";
+  if (clean && (clean.length > 1000 || !/^https:\/\/\S+$/.test(clean))) {
+    return { error: "La foto debe ser un enlace que empiece con https://" };
+  }
+
+  const { data, error } = await supabase
+    .from("barbers")
+    .update({ photo_url: clean || null })
+    .eq("tenant_id", membership.tenantId)
+    .eq("user_id", authUser.id)
+    .select("id");
+
+  if (error) return { error: parseSupabaseError(error) };
+  if (!data || data.length === 0) return { error: "Tu cuenta no está ligada a un perfil de barbero." };
+
+  revalidatePath("/dashboard/ajustes");
+  revalidatePath("/dashboard/barberos");
   return { success: true };
 }
