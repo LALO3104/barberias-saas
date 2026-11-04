@@ -161,11 +161,11 @@ export default async function TenantPublicPage(
         location={{
           addressLine: [tenant.address_line, tenant.city, tenant.state]
             .filter(Boolean)
-            .join(", ") || "Dirección no disponible",
+            .join(", "),
           phone: tenant.public_phone ?? undefined,
         }}
         footer={{
-          tagline: siteContent.footer_tagline ?? `${tenant.name} — Barbería premium`,
+          tagline: siteContent.footer_tagline ?? "Barbería premium",
           socialLinks: parseSocialLinks(siteContent),
         }}
       />
