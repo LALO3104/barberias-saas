@@ -29,7 +29,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp), 15 (clientes y estadísticas).
 
 ## 2. Stack y comandos
 
@@ -60,6 +60,8 @@ src/app/
     citas/                        admin "Citas" · barber "Mi agenda" (misma ruta)
     ganancias/                    admin "Ganancias" (reporte + pagos) · barber "Mis ganancias"
     ajustes/                      solo admin "Mi barbería": WhatsApp y mensajes
+    clientes/  clientes/[id]/     admin "Clientes" · barber "Mis clientes" (ficha, notas, historial)
+    estadisticas/                 admin "Estadísticas" · barber "Mis estadísticas"
 src/lib/
   auth.ts                         getAuthenticatedUser() → activeMembership {tenantId, role}
   supabase/server.ts, client.ts   clientes con la sesión del usuario (RLS)
@@ -69,6 +71,8 @@ src/lib/
   public-api.ts                   RPC públicas de la reserva (desde el navegador)
   dashboard-nav.ts                menú por rol
   whatsapp.ts                     plantillas, variables y enlaces wa.me
+  clients.ts                      forma del JSON de get_clients y get_business_stats
+  periods.ts                      periodos día/semana/mes (fechas locales)
 src/components/                   ui/, dashboard/*, public/*, sections/, animations/
   dashboard/MobileNav.tsx         teléfono: cabecera + barra inferior + panel "Más"
   dashboard/Sidebar.tsx           escritorio (lg+)
@@ -102,7 +106,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 22 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 23 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -210,6 +214,18 @@ exponen en la página pública). Número y plantillas solo se cambian con
 `update_tenant_messaging` (admin; normaliza el teléfono); `authenticated`
 sigue sin UPDATE sobre esas columnas.
 
+**Clientes (Step 15):** `clients_select`: el admin ve a todos; el barbero solo a
+quienes tienen o tuvieron cita con él (la cartera no se expone si se va).
+`get_clients` y `get_business_stats` son INVOKER: RLS define el alcance, y para
+el barbero los números son solo de sus citas y cobros. Notas internas con
+`set_client_note` (admin o barbero que lo atendió; ≤ 1000); nombre y teléfono con
+`update_client` (solo admin; teléfono de otro cliente → BA012).
+
+**Estadísticas (Step 15):** `get_business_stats`: citas por `start_at`, cobros por
+`created_at`, salarios por `paid_at`. Ganancia = cobrado − comisiones − propinas −
+salarios pagados (sin gastos; `profit_cents` null para el barbero). Lo que suma
+muchas filas va en SQL o por páginas: PostgREST corta cada consulta en 1000 filas.
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -267,6 +283,7 @@ en una migración cuando nada las use.
 | `BA009` | la cita no se puede cobrar (estado o ya tiene cobro activo) / cobro ya anulado |
 | `BA010` | cita completada sin cobro activo (trigger diferido) |
 | `BA011` | ya hay un pago a ese barbero que cubre parte del periodo |
+| `BA012` | ya hay otro cliente con ese teléfono |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -284,9 +301,10 @@ Requiere un Postgres local con todas las migraciones (`supabase start` con
 Docker, o Postgres con roles `anon`/`authenticated`/`service_role`,
 `auth.users` y `auth.uid()`). Sin Docker funciona PostgreSQL 17 portable (zip
 de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
-local, las pruebas SQL se reportan `NOT RUN`. Suites actuales:
+local, las pruebas SQL se reportan `NOT RUN`. En Windows, correr `psql` con
+`PGCLIENTENCODING=UTF8` o los acentos de los archivos llegan deformados. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -317,13 +335,12 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 - `trg_protect_last_admin` impide purgar una barbería que aún tiene admin.
 - `my_barber_id` no revisa `is_active`.
 - `activeMembership` toma la primera membresía sin orden fijo.
-- El barbero ve y crea clientes de toda la barbería.
+- El barbero aún puede crear clientes por API directa (`clients_insert`); la app no lo usa.
 - Reservas públicas sin anti-spam y con límites de longitud mejorables; el
   nombre del cliente se sobrescribe por teléfono.
 - Citas `cancelled`/`no_show` aún aceptan servicios; agregar un servicio por
   inserción directa (no por `move_appointment`) no extiende `end_at`.
 - El admin puede ajustar precio/comisión de líneas no completadas.
 - Completar / `no_show` no esperan a la hora de la cita.
-- No existen todavía:
-  estadísticas, módulo de clientes. El orden se decide
+- No existen todavía: registro de gastos del negocio. El orden se decide
   inspeccionando dependencias, no por suposición.

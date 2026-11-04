@@ -259,6 +259,7 @@ export default async function CitasPage(props: CitasPageProps) {
     startIso: r.start_at,
     endIso: r.end_at,
     status: r.status,
+    clientId: r.client_id,
     clientName: clients.get(r.client_id)?.name ?? "Cliente",
     clientPhone: clients.get(r.client_id)?.phone ?? null,
     services: services.get(r.id) ?? [],
