@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { DEFAULT_TEMPLATES, MAX_TEMPLATE_LENGTH, isMessageKey, type MessageTemplates } from "@/lib/whatsapp";
+import { extractMapQuery, isShortMapsUrl, parseGoogleMapsUrl } from "@/lib/maps";
 
 export type SettingsResult = { success?: boolean; error?: string; phone?: string | null };
 
@@ -62,6 +63,24 @@ export async function updateMessagingAction(input: unknown): Promise<SettingsRes
   return { success: true, phone: result.public_phone ?? null };
 }
 
+/**
+ * Lee el punto de un enlace de Google Maps. Los enlaces cortos se siguen a mano
+ * y cada salto se valida: el servidor solo visita dominios de Google.
+ */
+async function resolveMapLink(link: string): Promise<string | null> {
+  let url = parseGoogleMapsUrl(link);
+  for (let hops = 0; url && hops < 4; hops++) {
+    if (url.hostname === "consent.google.com") {
+      url = parseGoogleMapsUrl(url.searchParams.get("continue") ?? "");
+      continue;
+    }
+    if (!isShortMapsUrl(url)) return extractMapQuery(url);
+    const response = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(6000) });
+    url = parseGoogleMapsUrl(new URL(response.headers.get("location") ?? "", url).href);
+  }
+  return null;
+}
+
 /** Dirección pública de la barbería (solo admin; la función SQL lo vuelve a exigir). */
 export async function updateLocationAction(input: unknown): Promise<SettingsResult> {
   const supabase = await getSupabaseServer();
@@ -82,12 +101,25 @@ export async function updateLocationAction(input: unknown): Promise<SettingsResu
   }
   if (postalCode && !/^\d{5}$/.test(postalCode)) return { error: "El código postal debe tener 5 dígitos." };
 
+  // Sin enlace: se conserva el punto (undefined). clearMap lo quita.
+  const mapLink = text(data.mapLink);
+  let mapQuery: string | undefined = data.clearMap === true ? "" : undefined;
+  if (mapLink) {
+    if (mapLink.length > 2000) return { error: "Ese enlace es demasiado largo." };
+    const resolved = await resolveMapLink(mapLink).catch(() => null);
+    if (!resolved) {
+      return { error: "No pude leer ese enlace. Copia el enlace de Compartir en Google Maps y pégalo completo." };
+    }
+    mapQuery = resolved;
+  }
+
   const { data: tenant, error } = await supabase.rpc("update_tenant_location", {
     _tenant_id: membership.tenantId,
     _address_line: address,
     _city: city,
     _state: state,
     _postal_code: postalCode,
+    _map_query: mapQuery,
   });
 
   if (error || !tenant) {

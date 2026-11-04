@@ -45,6 +45,8 @@ export interface PublicTenant {
   city: string | null;
   state: string | null;
   postal_code: string | null;
+  /** Punto en Google Maps: "lat,lng" o nombre del lugar. */
+  map_query: string | null;
   public_phone: string | null;
   logo_url: string | null;
   theme: Record<string, unknown> | null;

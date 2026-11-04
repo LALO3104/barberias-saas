@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { fetchPublicTenant } from "@/lib/public-api";
 import { formatPrice, formatDuration, formatBusinessHours } from "@/lib/format";
+import { mapEmbedUrl, mapOpenUrl } from "@/lib/maps";
 import type { PublicTenant } from "@/types/public";
 
 import { Navbar } from "@/components/layout/Navbar";
@@ -204,6 +205,7 @@ function HoursSection({
   const address = [tenant.address_line, tenant.city, tenant.state]
     .filter(Boolean)
     .join(", ");
+  const mapQuery = tenant.map_query ?? (address ? `${tenant.name}, ${address}` : null);
 
   return (
     <section id="horarios" className="border-t border-border">
@@ -237,7 +239,7 @@ function HoursSection({
             <div className="rounded-card border border-border bg-background-secondary p-[var(--spacing-card)]">
               <h3 className="text-lg font-display text-foreground">Ubicación</h3>
               <div className="mt-4 space-y-2 text-body font-sans text-muted">
-                {address ? <p>{address}</p> : <p>Dirección próximamente.</p>}
+                {address ? <p>{address}</p> : !mapQuery && <p>Dirección próximamente.</p>}
                 {tenant.postal_code && <p>C.P. {tenant.postal_code}</p>}
                 {tenant.public_phone && (
                   <p>
@@ -249,9 +251,18 @@ function HoursSection({
                     </a>
                   </p>
                 )}
-                {address && (
+                {mapQuery && (
+                  <iframe
+                    src={mapEmbedUrl(mapQuery)}
+                    title={`Mapa de ${tenant.name}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="mt-3 aspect-video w-full rounded-button border border-border"
+                  />
+                )}
+                {mapQuery && (
                   <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${tenant.name}, ${address}`)}`}
+                    href={mapOpenUrl(mapQuery)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-3 inline-flex h-11 items-center rounded-button border border-accent/50 px-5 text-sm font-medium text-accent transition-[background-color,transform] duration-150 ease-out hover:bg-accent/10 active:scale-[0.97]"

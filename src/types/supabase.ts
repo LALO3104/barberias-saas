@@ -912,6 +912,7 @@ export type Database = {
           currency: string
           id: string
           logo_url: string | null
+          map_query: string | null
           message_templates: Json
           name: string
           plan_code: string
@@ -932,6 +933,7 @@ export type Database = {
           currency?: string
           id?: string
           logo_url?: string | null
+          map_query?: string | null
           message_templates?: Json
           name: string
           plan_code: string
@@ -952,6 +954,7 @@ export type Database = {
           currency?: string
           id?: string
           logo_url?: string | null
+          map_query?: string | null
           message_templates?: Json
           name?: string
           plan_code?: string
@@ -1102,6 +1105,7 @@ export type Database = {
         Args: {
           _address_line: string
           _city: string
+          _map_query?: string
           _postal_code: string
           _state: string
           _tenant_id: string

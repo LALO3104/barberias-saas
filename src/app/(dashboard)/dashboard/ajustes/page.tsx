@@ -42,7 +42,7 @@ export default async function AjustesPage() {
 
   const { data: tenant, error } = await supabase
     .from("tenants")
-    .select("name, public_phone, message_templates, address_line, city, state, postal_code")
+    .select("name, public_phone, message_templates, address_line, city, state, postal_code, map_query")
     .eq("id", authUser.activeMembership.tenantId)
     .single();
 
@@ -67,6 +67,8 @@ export default async function AjustesPage() {
         <p className="mt-1 text-body font-sans text-muted">Ubicación, WhatsApp y mensajes para tus clientes</p>
       </div>
       <LocationForm
+        tenantName={tenant.name}
+        mapQuery={tenant.map_query}
         initial={{
           address: tenant.address_line ?? "",
           city: tenant.city ?? "",

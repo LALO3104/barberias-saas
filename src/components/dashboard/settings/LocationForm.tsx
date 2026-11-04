@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { mapEmbedUrl, mapOpenUrl } from "@/lib/maps";
 import { updateLocationAction } from "@/app/(dashboard)/dashboard/ajustes/actions";
 import { ErrorText, FIELD, LABEL, PRIMARY } from "@/components/dashboard/appointments/AppointmentFormParts";
 
@@ -14,9 +15,19 @@ export interface LocationValues {
 }
 
 /** Dirección que se publica en la página de la barbería. */
-export function LocationForm({ initial }: { initial: LocationValues }) {
+export function LocationForm({
+  initial,
+  tenantName,
+  mapQuery,
+}: {
+  initial: LocationValues;
+  tenantName: string;
+  /** Punto guardado en el mapa, o null. */
+  mapQuery: string | null;
+}) {
   const router = useRouter();
   const [values, setValues] = useState(initial);
+  const [mapLink, setMapLink] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -26,17 +37,23 @@ export function LocationForm({ initial }: { initial: LocationValues }) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function submit() {
+  const address = [values.address, values.city, values.state].map((v) => v.trim()).filter(Boolean).join(", ");
+  // La vista previa usa lo guardado: con lo que se escribe se recargaría en cada tecla.
+  const savedAddress = [initial.address, initial.city, initial.state].filter(Boolean).join(", ");
+  const shownOnMap = mapQuery ?? (savedAddress ? `${tenantName}, ${savedAddress}` : null);
+
+  function submit(clearMap = false) {
     if (isPending) return;
     setError(null);
     setSaved(false);
     startTransition(async () => {
       try {
-        const result = await updateLocationAction(values);
+        const result = await updateLocationAction({ ...values, mapLink: clearMap ? "" : mapLink, clearMap });
         if (result.error) {
           setError(result.error);
           return;
         }
+        setMapLink("");
         setSaved(true);
         router.refresh();
       } catch {
@@ -56,7 +73,7 @@ export function LocationForm({ initial }: { initial: LocationValues }) {
       <div>
         <h2 className="font-display text-lg text-foreground">Ubicación</h2>
         <p className="mt-1 text-sm font-sans text-muted">
-          Aparece en tu página, con un botón para abrirla en Google Maps.
+          Aparece en tu página con un mapa de Google y un botón para llegar.
         </p>
       </div>
       <div>
@@ -121,6 +138,66 @@ export function LocationForm({ initial }: { initial: LocationValues }) {
           className={cn(FIELD, "tabular-nums")}
         />
       </div>
+
+      <div className="space-y-3 border-t border-border pt-4">
+        <div>
+          <p className="text-sm font-sans font-medium text-foreground">Tu punto exacto en Google Maps</p>
+          <ol className="mt-1.5 list-decimal space-y-0.5 pl-5 text-sm font-sans text-muted">
+            <li>Abre Google Maps y busca tu barbería, o mantén presionado el lugar exacto.</li>
+            <li>Toca Compartir y copia el enlace.</li>
+            <li>Pégalo aquí y guarda.</li>
+          </ol>
+        </div>
+        <a
+          href={mapOpenUrl(address || tenantName)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-11 items-center rounded-button border border-accent/50 px-4 text-sm font-sans font-medium text-accent transition-[background-color,transform] duration-150 ease-out hover:bg-accent/10 active:scale-[0.97]"
+        >
+          Abrir Google Maps
+        </a>
+        <div>
+          <label htmlFor="loc-map" className={LABEL}>
+            Enlace de Google Maps
+          </label>
+          <input
+            id="loc-map"
+            type="url"
+            inputMode="url"
+            autoCapitalize="none"
+            value={mapLink}
+            onChange={(e) => {
+              setSaved(false);
+              setMapLink(e.target.value);
+            }}
+            maxLength={2000}
+            placeholder="https://maps.app.goo.gl/…"
+            disabled={isPending}
+            className={FIELD}
+          />
+        </div>
+        {shownOnMap && (
+          <iframe
+            key={shownOnMap}
+            src={mapEmbedUrl(shownOnMap)}
+            title="Vista previa del mapa"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            className="aspect-video w-full rounded-button border border-border"
+          />
+        )}
+        {mapQuery && (
+          <button
+            type="button"
+            onClick={() => submit(true)}
+            disabled={isPending}
+            className="text-sm font-sans text-muted underline-offset-4 transition-colors hover:text-accent hover:underline"
+          >
+            Quitar el punto y usar la dirección escrita
+          </button>
+        )}
+      </div>
+
       {error && <ErrorText>{error}</ErrorText>}
       {saved && <p className="text-sm font-sans text-accent">Ubicación guardada.</p>}
       <button type="submit" disabled={isPending} className={PRIMARY}>

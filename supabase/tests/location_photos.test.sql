@@ -134,6 +134,31 @@ select pg_temp.check('quedó en NULL',
   (select address_line is null and city is null and state is null and postal_code is null
    from public.tenants where id = '1c000000-0000-0000-0000-00000000000a'));
 
+-- Punto en el mapa (migración 20261109090000)
+select pg_temp.expect_ok('guarda el punto del mapa', $q$
+  select public.update_tenant_location('1c000000-0000-0000-0000-00000000000a', 'Calle 1', 'CDMX', null, null, '19.4352236,-99.1412266')
+$q$);
+select pg_temp.expect_ok('sin _map_query conserva el punto', $q$
+  select public.update_tenant_location('1c000000-0000-0000-0000-00000000000a', 'Calle 2', 'CDMX', null, null)
+$q$);
+select pg_temp.check('el punto sigue y cambió la calle',
+  (select map_query = '19.4352236,-99.1412266' and address_line = 'Calle 2' from public.tenants where id = '1c000000-0000-0000-0000-00000000000a'));
+select pg_temp.expect_error('punto de más de 300 → 23514', $q$
+  select public.update_tenant_location('1c000000-0000-0000-0000-00000000000a', 'X', 'Y', null, null, repeat('a', 301))
+$q$, '23514');
+select pg_temp.expect_error('UPDATE directo de map_query → 42501', $q$
+  update public.tenants set map_query = 'x' where id = '1c000000-0000-0000-0000-00000000000a'
+$q$, '42501');
+select pg_temp.as_user(null);
+select pg_temp.check('la página pública devuelve el punto',
+  (select public.get_public_tenant('test-lp-k') ->> 'map_query' = '19.4352236,-99.1412266'));
+select pg_temp.as_user('ac000000-0000-0000-0000-000000000001');
+select pg_temp.expect_ok('vacío quita el punto', $q$
+  select public.update_tenant_location('1c000000-0000-0000-0000-00000000000a', 'Calle 2', 'CDMX', null, null, '')
+$q$);
+select pg_temp.check('sin punto',
+  (select map_query is null from public.tenants where id = '1c000000-0000-0000-0000-00000000000a'));
+
 -- =============================================================================
 -- 2. Foto del barbero
 -- =============================================================================

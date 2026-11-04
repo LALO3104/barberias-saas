@@ -49,6 +49,20 @@ export function Footer({ tenantName, nav, location, footer }: FooterProps) {
           </div>
         </div>
       </Container>
+      <div className="border-t border-border">
+        <Container className="space-y-1 py-4 text-center text-sm font-sans text-muted">
+          <p>Hecha con cariño por Eduardo Chavez {"<3"}</p>
+          <p>
+            Contacto para tu barbería:{" "}
+            <a
+              href="mailto:edu.3104.ec@gmail.com"
+              className="text-accent underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              edu.3104.ec@gmail.com
+            </a>
+          </p>
+        </Container>
+      </div>
     </footer>
   );
 }
