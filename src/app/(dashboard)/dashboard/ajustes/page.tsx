@@ -4,6 +4,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { MESSAGE_KEYS, parseTemplates, templateFor, type MessageKey } from "@/lib/whatsapp";
 import { MessagingSettings } from "@/components/dashboard/settings/MessagingSettings";
+import { MyWhatsAppForm } from "@/components/dashboard/settings/MyWhatsAppForm";
 
 export const metadata: Metadata = {
   title: "Mi barbería — Dashboard",
@@ -11,15 +12,30 @@ export const metadata: Metadata = {
 };
 
 /**
- * Ajustes de la barbería (solo admin): número de WhatsApp y mensajes
- * predeterminados. Se guardan con public.update_tenant_messaging.
+ * Admin: número de WhatsApp de la barbería y mensajes predeterminados (se
+ * guardan con public.update_tenant_messaging). Barbero: "Mi perfil", su WhatsApp.
  */
 export default async function AjustesPage() {
   const supabase = await getSupabaseServer();
   if (!supabase) redirect("/login");
   const authUser = await getAuthenticatedUser(supabase);
   if (!authUser?.activeMembership) redirect("/login");
-  if (authUser.activeMembership.role !== "admin") redirect("/dashboard");
+
+  if (authUser.activeMembership.role !== "admin") {
+    const { data: me } = await supabase
+      .from("barbers")
+      .select("id, whatsapp_phone")
+      .eq("tenant_id", authUser.activeMembership.tenantId)
+      .eq("user_id", authUser.id)
+      .maybeSingle();
+    if (!me) redirect("/dashboard");
+    return (
+      <div className="space-y-6">
+        <h1 className="text-section font-display text-foreground">Mi perfil</h1>
+        <MyWhatsAppForm barberId={me.id} phone={me.whatsapp_phone} />
+      </div>
+    );
+  }
 
   const { data: tenant, error } = await supabase
     .from("tenants")

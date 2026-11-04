@@ -77,6 +77,8 @@ export interface BookingConfirmation {
   appointment_id: string;
   status: "pending";
   barber_id: string;
+  /** WhatsApp del barbero elegido, si lo registró. */
+  barber_whatsapp: string | null;
   start_at: string; // timestamptz ISO string
   end_at: string; // timestamptz ISO string
   services: BookedService[];

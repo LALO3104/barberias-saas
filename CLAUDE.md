@@ -29,7 +29,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp), 15 (clientes y estadísticas).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp), 15 (clientes y estadísticas), 16 (blindaje y publicación), 17 (cuentas y WhatsApp de barberos).
 
 ## 2. Stack y comandos
 
@@ -52,7 +52,7 @@ src/app/
   (public)/page.tsx               redirige a /kings
   [slug]/page.tsx                 landing pública por barbería (/kings)
   [slug]/privacidad/page.tsx      aviso de privacidad con los datos de la barbería
-  (auth)/                         login, forgot/reset password, callback
+  (auth)/                         login, forgot/reset password, callback, invitacion/[token]
   (dashboard)/layout.tsx          exige sesión + membresía; nav por rol; manifest PWA
   pwa/icon/[size]/route.tsx       íconos de la app instalable (192, 512, maskable, apple)
   (dashboard)/dashboard/
@@ -108,7 +108,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 24 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 25 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -228,6 +228,17 @@ el barbero los números son solo de sus citas y cobros. Notas internas con
 salarios pagados (sin gastos; `profit_cents` null para el barbero). Lo que suma
 muchas filas va en SQL o por páginas: PostgREST corta cada consulta en 1000 filas.
 
+**Cuentas de barberos (Step 17):** el admin toca "Invitar" (`create_barber_invite`,
+solo barberos activos sin cuenta) y comparte `/invitacion/<token>`: un solo uso, 7
+días, se guarda solo el hash, y otro enlace revoca el anterior. El barbero crea
+correo y contraseña; `accept_barber_invite` lo vuelve miembro `barber` y liga
+`barbers.user_id` (el trigger de autoedición solo lo permite con invitación
+canjeada). Una cuenta que ya es miembro → BA014. El registro abierto de Supabase
+no da acceso a nada: sin invitación no hay membresía. WhatsApp del barbero en
+`barbers.whatsapp_phone` (`set_barber_whatsapp`: admin o él mismo). No está en la
+página pública: `book_appointment` lo devuelve solo tras reservar con él, y el
+botón final del cliente le escribe a él (si no, a `tenants.public_phone`).
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -288,6 +299,7 @@ aplica a la reserva pública; el personal no tiene ese límite.
 | `BA011` | ya hay un pago a ese barbero que cubre parte del periodo |
 | `BA012` | ya hay otro cliente con ese teléfono |
 | `BA013` | reserva pública: ese cliente ya tiene 3 citas futuras activas |
+| `BA014` | ese barbero ya tiene cuenta, o la cuenta ya es miembro de la barbería |
 
 Errores propios nuevos: clase `BA0xx` (`P0004` es `assert_failure` y no se
 puede capturar en PL/pgSQL).
@@ -308,7 +320,7 @@ de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. En Windows, correr `psql` con
 `PGCLIENTENCODING=UTF8` o los acentos de los archivos llegan deformados. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`, `barber_accounts`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -363,6 +375,9 @@ OpenNext es experimental: tras actualizar Next o el adaptador, probar con
   `NEXT_PUBLIC_SITE_URL` debe apuntar a la dirección pública.
 - En Supabase (Authentication → URL Configuration), la dirección pública debe
   estar como Site URL y en Redirect URLs, o falla la recuperación de contraseña.
+- Auth: "Confirm email" va desactivado (la invitación ya prueba quién es). El
+  correo por defecto de Supabase solo llega a direcciones autorizadas del equipo y
+  a 2 por hora: "Olvidé mi contraseña" no le llega a los barberos sin SMTP propio.
 - Supabase Free: se pausa tras 7 días sin actividad (`keepalive.yml` lo evita visitando
   la página; si cambia la dirección, actualizarla ahí) y **no tiene respaldos automáticos**.
   Con clientes reales, recomendar Supabase Pro.

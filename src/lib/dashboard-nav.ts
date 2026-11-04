@@ -41,6 +41,7 @@ const BARBER_NAV: NavItem[] = [
   { label: "Mis clientes", href: "/dashboard/clientes", icon: "users" },
   { label: "Mis estadísticas", href: "/dashboard/estadisticas", icon: "chart" },
   { label: "Mis ganancias", href: "/dashboard/ganancias", icon: "cash" },
+  { label: "Mi perfil", href: "/dashboard/ajustes", icon: "cog" },
 ];
 
 export function getNavForRole(role: MemberRole): NavItem[] {

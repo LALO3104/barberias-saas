@@ -47,6 +47,96 @@ export async function loginAction(
   redirect("/dashboard");
 }
 
+// ─── Invitación de barbero ─────────────────────────────────────────────────
+
+export interface InviteState {
+  error?: string;
+}
+
+const INVITE_TOKEN_RE = /^[0-9a-f]{64}$/;
+const INVALID_INVITE = "Esta invitación ya no es válida. Pide un enlace nuevo al administrador.";
+
+/**
+ * Crea la cuenta (o entra con una existente) y la liga al barbero de la
+ * invitación. El token es lo que autoriza: sin él, una cuenta nueva no tiene
+ * acceso a ninguna barbería.
+ */
+export async function acceptInviteAction(
+  _prevState: InviteState,
+  formData: FormData
+): Promise<InviteState> {
+  const token = String(formData.get("token") ?? "");
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const whatsapp = String(formData.get("whatsapp") ?? "").trim();
+
+  if (!INVITE_TOKEN_RE.test(token)) return { error: INVALID_INVITE };
+  if (!email || email.length > 254) return { error: "Escribe tu correo electrónico." };
+  if (password.length < 8 || password.length > 72) {
+    return { error: "La contraseña debe tener de 8 a 72 caracteres." };
+  }
+  if (!whatsapp || whatsapp.length > 30) return { error: "Escribe tu WhatsApp." };
+
+  const supabase = await getSupabaseServer();
+  if (!supabase) {
+    return { error: "Error de configuración del servidor. Intenta más tarde." };
+  }
+
+  const { data: invite, error: inviteError } = await supabase.rpc("get_barber_invite", { _token: token });
+  if (inviteError || !invite) return { error: INVALID_INVITE };
+  const barberName = (invite as { barber_name?: string }).barber_name;
+
+  const { data: signUp, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { full_name: barberName } },
+  });
+
+  if (signUpError && !signUpError.message.includes("already registered")) {
+    if (signUpError.message.includes("rate limit") || signUpError.status === 429) {
+      return { error: "Demasiados intentos. Espera unos minutos." };
+    }
+    if (signUpError.code === "weak_password") {
+      return { error: "Esa contraseña es muy débil. Usa otra." };
+    }
+    if (signUpError.code === "validation_failed" || signUpError.code === "email_address_invalid") {
+      return { error: "Ese correo no es válido." };
+    }
+    return { error: "No se pudo crear tu cuenta. Intenta de nuevo." };
+  }
+
+  // Sin sesión: el correo ya tenía cuenta, o Supabase pide confirmar el correo.
+  if (!signUp?.session) {
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInError) {
+      if (signInError.message.includes("Email not confirmed")) {
+        return { error: "Tu cuenta quedó pendiente de confirmar. Avisa al administrador." };
+      }
+      return { error: "Ese correo ya tiene cuenta y la contraseña no coincide." };
+    }
+  }
+
+  const { error: acceptError } = await supabase.rpc("accept_barber_invite", {
+    _token: token,
+    _whatsapp: whatsapp,
+  });
+
+  if (acceptError) {
+    switch (acceptError.code) {
+      case "23514":
+        return { error: acceptError.message };
+      case "BA014":
+        return { error: "Esa cuenta ya pertenece a esta barbería, o este barbero ya tiene acceso." };
+      case "P0002":
+        return { error: INVALID_INVITE };
+      default:
+        return { error: "No se pudo activar tu cuenta. Intenta de nuevo." };
+    }
+  }
+
+  redirect("/dashboard");
+}
+
 // ─── Forgot Password ──────────────────────────────────────────────────────
 
 export interface ForgotPasswordState {

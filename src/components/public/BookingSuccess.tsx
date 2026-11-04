@@ -34,11 +34,16 @@ export function BookingSuccess({ confirmation, tenant, onNewBooking }: BookingSu
   const serviceNames = orderedServices.map((s) => s.name).join(", ");
   const address = [tenant.address_line, tenant.city, tenant.state].filter(Boolean).join(", ");
 
-  // Mensaje ya escrito del cliente a la barbería (wa.me, sin costo).
-  const whatsappHref = tenant.public_phone
+  // Mensaje ya escrito (wa.me, sin costo): al barbero elegido o, si no registró
+  // número, a la barbería. El cliente es quien lo envía.
+  const toBarber = !!confirmation.barber_whatsapp;
+  const whatsappPhone = confirmation.barber_whatsapp ?? tenant.public_phone;
+  const whatsappHref = whatsappPhone
     ? waLink(
-        tenant.public_phone,
-        `Hola, acabo de reservar en ${tenant.name}: ${serviceNames} con ${barberName} el ${dateStr} a las ${timeStr}. A nombre de ${client.name}.`
+        whatsappPhone,
+        toBarber
+          ? `Hola ${barberName}, acabo de reservar contigo en ${tenant.name}: ${serviceNames} el ${dateStr} a las ${timeStr}. A nombre de ${client.name}.`
+          : `Hola, acabo de reservar en ${tenant.name}: ${serviceNames} con ${barberName} el ${dateStr} a las ${timeStr}. A nombre de ${client.name}.`
       )
     : null;
 
@@ -149,7 +154,7 @@ export function BookingSuccess({ confirmation, tenant, onNewBooking }: BookingSu
 
       <p data-reveal className="mt-4 text-center text-sm font-sans text-muted">
         La barbería confirmará tu cita.
-        {whatsappHref ? " Avísales por WhatsApp para que la vean al momento." : ""}
+        {whatsappHref ? ` Avisa por WhatsApp ${toBarber ? `a ${barberName}` : "a la barbería"} para que la vea al momento.` : ""}
       </p>
 
       {/* ── Acciones ────────────────────────────────────────── */}
@@ -162,7 +167,7 @@ export function BookingSuccess({ confirmation, tenant, onNewBooking }: BookingSu
             className="flex h-14 w-full items-center justify-center gap-2 rounded-button bg-accent text-base font-sans font-semibold text-background transition-[filter,transform] duration-150 ease-out hover:brightness-110 active:scale-[0.98]"
           >
             <WhatsAppIcon />
-            Avisar por WhatsApp
+            {toBarber ? `Avisar a ${barberName}` : "Avisar por WhatsApp"}
           </a>
         )}
         <button

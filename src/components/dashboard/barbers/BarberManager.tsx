@@ -4,6 +4,7 @@ import { useState, useTransition, useCallback } from "react";
 import { Dialog } from "@/components/ui/Dialog";
 import { BarberForm } from "./BarberForm";
 import { CompensationButton } from "./CompensationButton";
+import { BarberWhatsAppButton, InviteBarberButton } from "./BarberAccessButtons";
 import { describeCompensation, type Compensation } from "@/lib/compensation";
 import { toggleBarberStatusAction } from "@/app/(dashboard)/dashboard/barberos/actions";
 import { cn } from "@/lib/utils";
@@ -271,7 +272,15 @@ export function BarberManager({ barbers, compensations, currency }: BarberManage
               </div>
 
               {/* Acciones */}
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {!barber.user_id && barber.is_active && (
+                  <InviteBarberButton barberId={barber.id} barberName={barber.display_name} />
+                )}
+                <BarberWhatsAppButton
+                  barberId={barber.id}
+                  barberName={barber.display_name}
+                  phone={barber.whatsapp_phone}
+                />
                 <CompensationButton
                   barberId={barber.id}
                   barberName={barber.display_name}

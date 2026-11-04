@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { isPayType, isSalaryPeriod } from "@/lib/compensation";
@@ -227,5 +228,64 @@ export async function setBarberCompensationAction(input: unknown): Promise<Barbe
 
   revalidatePath("/dashboard/barberos");
   revalidatePath("/dashboard/ganancias");
+  return { success: true };
+}
+
+// ─── Cuentas y WhatsApp (Step 17) ───────────────────────────────────────────
+
+/**
+ * Crea el enlace de invitación de un barbero sin cuenta. Solo admin; la función
+ * SQL lo vuelve a exigir, revoca el enlace anterior y guarda solo el hash.
+ */
+export async function createBarberInviteAction(barberId: unknown): Promise<{ link?: string; error?: string }> {
+  const ctx = await getAdminContext();
+  if ("error" in ctx) return { error: ctx.error };
+  if (typeof barberId !== "string" || !UUID_RE.test(barberId)) return { error: "Barbero no válido." };
+
+  const { data, error } = await ctx.supabase.rpc("create_barber_invite", { _barber_id: barberId });
+  if (error) {
+    switch (error.code) {
+      case "BA014":
+        return { error: "Este barbero ya tiene cuenta." };
+      case "23514":
+        return { error: error.message };
+      case "P0002":
+        return { error: "El barbero no pertenece a tu barbería." };
+      default:
+        return { error: "No se pudo crear la invitación. Intenta de nuevo." };
+    }
+  }
+
+  const token = (data as { token?: string } | null)?.token;
+  if (!token) return { error: "No se pudo crear la invitación. Intenta de nuevo." };
+
+  const origin = (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  return { link: `${origin}/invitacion/${token}` };
+}
+
+/** WhatsApp de un barbero: el admin o el propio barbero (lo exige la función SQL). */
+export async function setBarberWhatsAppAction(barberId: unknown, phone: unknown): Promise<BarberActionState> {
+  const supabase = await getSupabaseServer();
+  const authUser = supabase ? await getAuthenticatedUser(supabase) : null;
+  if (!supabase || !authUser?.activeMembership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+
+  if (typeof barberId !== "string" || !UUID_RE.test(barberId)) return { error: "Barbero no válido." };
+  const clean = typeof phone === "string" ? phone.trim() : "";
+  if (clean.length > 30) return { error: "El WhatsApp no es válido." };
+
+  const { error } = await supabase.rpc("set_barber_whatsapp", { _barber_id: barberId, _phone: clean });
+  if (error) {
+    switch (error.code) {
+      case "23514":
+        return { error: error.message };
+      case "P0002":
+        return { error: "El barbero no existe o no tienes acceso a él." };
+      default:
+        return { error: "No se pudo guardar el WhatsApp. Intenta de nuevo." };
+    }
+  }
+
+  revalidatePath("/dashboard/barberos");
+  revalidatePath("/dashboard/ajustes");
   return { success: true };
 }

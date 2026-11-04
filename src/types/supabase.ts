@@ -362,6 +362,60 @@ export type Database = {
           },
         ]
       }
+      barber_invites: {
+        Row: {
+          barber_id: string
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          revoked_at: string | null
+          tenant_id: string
+          token_hash: string
+          used_at: string | null
+          used_by: string | null
+        }
+        Insert: {
+          barber_id: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          tenant_id: string
+          token_hash: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Update: {
+          barber_id?: string
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          token_hash?: string
+          used_at?: string | null
+          used_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "barber_invites_barber_fkey"
+            columns: ["tenant_id", "barber_id"]
+            isOneToOne: false
+            referencedRelation: "barbers"
+            referencedColumns: ["tenant_id", "id"]
+          },
+          {
+            foreignKeyName: "barber_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       barber_payouts: {
         Row: {
           barber_id: string
@@ -492,6 +546,7 @@ export type Database = {
           tenant_id: string
           updated_at: string
           user_id: string | null
+          whatsapp_phone: string | null
         }
         Insert: {
           bio?: string | null
@@ -505,6 +560,7 @@ export type Database = {
           tenant_id: string
           updated_at?: string
           user_id?: string | null
+          whatsapp_phone?: string | null
         }
         Update: {
           bio?: string | null
@@ -518,6 +574,7 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string | null
+          whatsapp_phone?: string | null
         }
         Relationships: [
           {
@@ -923,6 +980,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_barber_invite: {
+        Args: { _token: string; _whatsapp?: string }
+        Returns: Json
+      }
       book_appointment: {
         Args: {
           _barber_id: string
@@ -945,6 +1006,7 @@ export type Database = {
         }
         Returns: Json
       }
+      create_barber_invite: { Args: { _barber_id: string }; Returns: Json }
       create_walk_in: {
         Args: {
           _acknowledge_warnings?: boolean
@@ -972,6 +1034,7 @@ export type Database = {
           slot_start: string
         }[]
       }
+      get_barber_invite: { Args: { _token: string }; Returns: Json }
       get_business_stats: {
         Args: { _from: string; _tenant_id: string; _to: string }
         Returns: Json
@@ -1014,6 +1077,10 @@ export type Database = {
           _reason?: string
         }
         Returns: Json
+      }
+      set_barber_whatsapp: {
+        Args: { _barber_id: string; _phone: string }
+        Returns: string
       }
       set_barber_working_hours: {
         Args: { _barber_id: string; _intervals: Json; _tenant_id: string }

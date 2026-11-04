@@ -406,7 +406,7 @@ begin
 
   select array_agg(k order by k) into _keys from jsonb_object_keys(_r) k;
   perform pg_temp.check('respuesta: claves exactas del contrato',
-    _keys = array['appointment_id','barber_id','client','end_at','services','start_at','status','total_duration_minutes','total_price_cents'],
+    _keys = array['appointment_id','barber_id','barber_whatsapp','client','end_at','services','start_at','status','total_duration_minutes','total_price_cents'],
     _keys::text);
   perform pg_temp.check('respuesta: status pending y barber_id', _r->>'status' = 'pending' and (_r->>'barber_id')::uuid = 'b2000000-0000-0000-0000-000000000001');
   perform pg_temp.check('respuesta: total_duration_minutes = 60', (_r->>'total_duration_minutes')::int = 60, _r->>'total_duration_minutes');
