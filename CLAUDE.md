@@ -363,6 +363,6 @@ OpenNext es experimental: tras actualizar Next o el adaptador, probar con
   `NEXT_PUBLIC_SITE_URL` debe apuntar a la dirección pública.
 - En Supabase (Authentication → URL Configuration), la dirección pública debe
   estar como Site URL y en Redirect URLs, o falla la recuperación de contraseña.
-- Supabase Free: se pausa tras 7 días sin actividad (`keepalive.yml` lo evita con
-  la variable de repositorio `SITE_URL`) y **no tiene respaldos automáticos**.
+- Supabase Free: se pausa tras 7 días sin actividad (`keepalive.yml` lo evita visitando
+  la página; si cambia la dirección, actualizarla ahí) y **no tiene respaldos automáticos**.
   Con clientes reales, recomendar Supabase Pro.
