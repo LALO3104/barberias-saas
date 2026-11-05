@@ -691,6 +691,14 @@ function StepBarber({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
+  if (barbers.length === 0) {
+    return (
+      <p className="py-6 text-center text-body font-sans text-muted">
+        Muy pronto podrás reservar en línea. Mientras tanto, visítanos en la barbería.
+      </p>
+    );
+  }
+
   return (
     <ul className="grid gap-3 sm:grid-cols-2">
       {barbers.map((barber) => {

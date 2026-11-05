@@ -15,4 +15,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Visitar la página pública
-        run: curl -fsS -o /dev/null --max-time 60 "https://barberias.barberias.workers.dev/kings"
+        run: curl -fsS -o /dev/null --max-time 60 "https://barberias.barberias.workers.dev/charlys"

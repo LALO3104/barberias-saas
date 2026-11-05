@@ -5,5 +5,5 @@ import { redirect } from "next/navigation";
  * del producto o un listado.
  */
 export default function RootPage() {
-  redirect("/kings");
+  redirect("/charlys");
 }

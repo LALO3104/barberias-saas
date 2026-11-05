@@ -8,7 +8,8 @@ carga arriba. Aquí va lo específico de este proyecto.
 
 SaaS multi-tenant para barberías: landing pública por barbería con reservas en
 línea y dashboard privado para administrar barberos, servicios, horarios y
-citas. Primer cliente/demo: **Barbería Kings** (`/kings`).
+citas. Primer cliente real: **Barbería Charly's** (`/charlys`), que reemplazó a la
+demo Barbería Kings en producción.
 
 - Repositorio `LALO3104/barberias-saas`, rama principal `main`. Quien
   autoriza commits, push, merge y cambios al remoto es **Eduardo**.
@@ -49,8 +50,8 @@ de Google Fonts: es un fallo externo, no del código; reportarlo así.
 
 ```
 src/app/
-  (public)/page.tsx               redirige a /kings
-  [slug]/page.tsx                 landing pública por barbería (/kings)
+  (public)/page.tsx               redirige a /charlys
+  [slug]/page.tsx                 landing pública por barbería (/charlys)
   [slug]/privacidad/page.tsx      aviso de privacidad con los datos de la barbería
   (auth)/                         login, forgot/reset password, callback, invitacion/[token]
   (dashboard)/layout.tsx          exige sesión + membresía; nav por rol; manifest PWA
