@@ -6,6 +6,7 @@ import { MESSAGE_KEYS, parseTemplates, templateFor, type MessageKey } from "@/li
 import { MessagingSettings } from "@/components/dashboard/settings/MessagingSettings";
 import { MyWhatsAppForm } from "@/components/dashboard/settings/MyWhatsAppForm";
 import { MyProfileForm } from "@/components/dashboard/settings/MyProfileForm";
+import { NotificationsToggle } from "@/components/dashboard/settings/NotificationsToggle";
 import { LocationForm } from "@/components/dashboard/settings/LocationForm";
 
 export const metadata: Metadata = {
@@ -34,6 +35,7 @@ export default async function AjustesPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-section font-display text-foreground">Mi perfil</h1>
+        <NotificationsToggle />
         <MyProfileForm name={me.display_name} role={me.role_title} bio={me.bio} photoUrl={me.photo_url} />
         <MyWhatsAppForm barberId={me.id} phone={me.whatsapp_phone} />
       </div>

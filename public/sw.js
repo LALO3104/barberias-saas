@@ -8,8 +8,10 @@
 //   - Archivos de la app con hash en el nombre (/_next/static/…): se guardan
 //     la primera vez y se reutilizan (no cambian nunca).
 //   - Supabase, otros dominios, POST y peticiones de datos: no se tocan.
+//   - Avisos de reservas: llegan vacíos; los detalles se piden con la sesión y
+//     nunca se guardan.
 
-const VERSION = "mi-barberia-v1";
+const VERSION = "mi-barberia-v2";
 const STATIC_CACHE = `${VERSION}-static`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/pwa/icon/192", "/manifest.webmanifest"];
@@ -70,4 +72,41 @@ self.addEventListener("fetch", (event) => {
     );
   }
   // Todo lo demás (datos RSC, rutas de la API, imágenes de Supabase): red normal.
+});
+
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    (async () => {
+      // Sin sesión o sin conexión se muestra el aviso genérico: el teléfono
+      // debe mostrar algo por cada push que recibe.
+      let notice = { title: "Mi barbería", body: "Tienes una cita nueva", url: "/dashboard/citas" };
+      try {
+        const response = await fetch("/api/push/latest", { credentials: "same-origin", cache: "no-store" });
+        if (response.ok) {
+          const details = await response.json();
+          if (details.title) notice = details;
+        }
+      } catch {
+        // Se queda el aviso genérico.
+      }
+      await self.registration.showNotification(notice.title, {
+        body: notice.body,
+        tag: notice.tag,
+        icon: "/pwa/icon/192",
+        badge: "/pwa/icon/192",
+        data: { url: notice.url },
+      });
+    })()
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/dashboard/citas";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((w) => "navigate" in w);
+      return open ? open.navigate(url).then((w) => (w || open).focus()) : self.clients.openWindow(url);
+    })
+  );
 });

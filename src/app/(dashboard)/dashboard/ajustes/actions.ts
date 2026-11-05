@@ -5,6 +5,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { DEFAULT_TEMPLATES, MAX_TEMPLATE_LENGTH, isMessageKey, type MessageTemplates } from "@/lib/whatsapp";
 import { extractMapQuery, isShortMapsUrl, parseGoogleMapsUrl } from "@/lib/maps";
+import { isPushEndpoint } from "@/lib/push";
 
 export type SettingsResult = { success?: boolean; error?: string; phone?: string | null };
 
@@ -134,5 +135,36 @@ export async function updateLocationAction(input: unknown): Promise<SettingsResu
   }
 
   revalidatePath("/dashboard/ajustes");
+  return { success: true };
+}
+
+/** Registra este dispositivo para los avisos de reservas (solo barberos; lo exige la función SQL). */
+export async function savePushSubscriptionAction(endpoint: unknown): Promise<SettingsResult> {
+  const supabase = await getSupabaseServer();
+  const authUser = supabase ? await getAuthenticatedUser(supabase) : null;
+  const membership = authUser?.activeMembership;
+  if (!supabase || !membership) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (!isPushEndpoint(endpoint)) return { error: "Este teléfono no es compatible con las notificaciones." };
+
+  const { error } = await supabase.rpc("save_push_subscription", {
+    _tenant_id: membership.tenantId,
+    _endpoint: endpoint,
+  });
+  if (error) {
+    return {
+      error: error.code === "P0002" ? "Solo los barberos reciben notificaciones." : "No se pudieron activar. Intenta de nuevo.",
+    };
+  }
+  return { success: true };
+}
+
+/** Quita este dispositivo de los avisos. */
+export async function removePushSubscriptionAction(endpoint: unknown): Promise<SettingsResult> {
+  const supabase = await getSupabaseServer();
+  if (!supabase) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (!isPushEndpoint(endpoint)) return { error: "Dispositivo no válido." };
+
+  const { error } = await supabase.rpc("delete_push_subscription", { _endpoint: endpoint });
+  if (error) return { error: "No se pudieron desactivar. Intenta de nuevo." };
   return { success: true };
 }

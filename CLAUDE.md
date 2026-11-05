@@ -30,7 +30,7 @@ El último commit y la última migración se consultan con `git log` y
 4 (landing + reservas), 5 (auth + dashboard), 6 (barberos), 7 (servicios),
 8 (horarios), 9 (agenda/citas), 9.1 (hardening de citas), 10.1 (ocupación,
 varios servicios por cita, horarios cada 5 min), 10.2 (app "Mi barbería" para
-el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp), 15 (clientes y estadísticas), 16 (blindaje y publicación), 17 (cuentas y WhatsApp de barberos).
+el teléfono), 10.3 (walk-ins), 11 (mover citas), 12 (cobro manual), 13 (comisiones y pagos a barberos), 14 (avisos por WhatsApp), 15 (clientes y estadísticas), 16 (blindaje y publicación), 17 (cuentas y WhatsApp de barberos), 18 (notificaciones push).
 
 ## 2. Stack y comandos
 
@@ -56,6 +56,7 @@ src/app/
   (auth)/                         login, forgot/reset password, callback, invitacion/[token]
   (dashboard)/layout.tsx          exige sesión + membresía; nav por rol; manifest PWA
   pwa/icon/[size]/route.tsx       íconos de la app instalable (192, 512, maskable, apple)
+  api/push/send, api/push/latest  avisos push: envío (pg_net + secreto) y detalle (sesión)
   (dashboard)/dashboard/
     page.tsx                      inicio (tarjeta "Citas de hoy")
     barberos/  servicios/         solo admin
@@ -76,6 +77,7 @@ src/lib/
   whatsapp.ts                     plantillas, variables y enlaces wa.me
   clients.ts                      forma del JSON de get_clients y get_business_stats
   maps.ts                         lee enlaces de Google Maps; URLs del mapa incrustado
+  push.ts                         firma VAPID con WebCrypto; dominios de push permitidos
   periods.ts                      periodos día/semana/mes (fechas locales)
 src/components/                   ui/, dashboard/*, public/*, sections/, animations/
   dashboard/MobileNav.tsx         teléfono: cabecera + barra inferior + panel "Más"
@@ -110,7 +112,7 @@ transacción explícita con `npx supabase db query --linked -f <archivo>`
 `supabase db push` ni la herramienta `apply_migration` (registran en
 `schema_migrations`). Ante dudas, preguntar a Eduardo.
 
-**Historial remoto desincronizado** (repo: 28 migraciones, todas aplicadas;
+**Historial remoto desincronizado** (repo: 29 migraciones, todas aplicadas;
 registradas en el remoto: 9; además algunas funciones difieren del repo solo
 en comentarios).
 Problema conocido: no tocar `schema_migrations` ni intentar corregirlo fuera
@@ -251,6 +253,15 @@ barbero edita su tarjeta pública (nombre, puesto, descripción, foto) con su se
 (RLS + trigger, que le impiden tocar `is_active`, `sort_order`, `tenant_id` y
 `user_id`); límites 80/80/300 también en la base. El admin edita cualquiera.
 
+**Notificaciones (Step 18):** solo al barbero elegido y solo por reservas en línea.
+El barbero activa su teléfono en Mi perfil (`save_push_subscription`, máximo 5,
+solo dominios de push conocidos; la tabla no se lee por API). Tras insertar una cita
+`online`, el trigger `appointments_notify_online_booking` encola con pg_net un POST
+a `/api/push/send` con las direcciones y el secreto de Vault; nunca hace fallar la
+reserva. El aviso viaja vacío: el service worker pide los detalles a
+`/api/push/latest` con la sesión, y sin sesión muestra un texto genérico. Direcciones
+vencidas no se limpian solas (se reemplazan por el límite de 5).
+
 **UPDATE:** `authenticated` solo puede actualizar `status` y
 `cancellation_reason`. Todo lo demás (`id`, `tenant_id`, `barber_id`,
 `client_id`, `start_at`, `end_at`, `source`, `client_note`, `created_*`,
@@ -332,7 +343,7 @@ de EDB) + PostgREST v14.5 en una carpeta temporal, sin instalar nada. Sin base
 local, las pruebas SQL se reportan `NOT RUN`. En Windows, correr `psql` con
 `PGCLIENTENCODING=UTF8` o los acentos de los archivos llegan deformados. Suites actuales:
 `appointments_hardening`, `appointment_occupancy`, `multi_service_booking`,
-`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`, `barber_accounts`, `location_photos`;
+`walk_ins`, `move_appointment`, `charges`, `commissions`, `whatsapp_settings`, `clients_stats`, `launch_hardening`, `barber_accounts`, `location_photos`, `push_notifications`;
 las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 
 ## 10. Interfaz
@@ -375,6 +386,9 @@ las anteriores (Step 9, horarios, integridad) aún no están en el repo.
 - Avisos de rendimiento de Supabase sin atender (no urgentes a esta escala):
   índices de llaves foráneas y `auth.uid()` sin `(select …)` en 4 policies.
 - El aviso de privacidad es un texto base sin revisión legal.
+- `net.http_post` es ejecutable por `anon`/`authenticated`: lo otorga Supabase (`issue_pg_net_access`) y el
+  `revoke` de la migración de Step 18 no tiene efecto. No es alcanzable porque `net` no está
+  expuesto en la API: **nunca agregar `net` a los esquemas expuestos**.
 
 ## 12. Publicación (Step 16)
 
@@ -390,6 +404,9 @@ OpenNext es experimental: tras actualizar Next o el adaptador, probar con
 - Auth: "Confirm email" va desactivado (la invitación ya prueba quién es). El
   correo por defecto de Supabase solo llega a direcciones autorizadas del equipo y
   a 2 por hora: "Olvidé mi contraseña" no le llega a los barberos sin SMTP propio.
+- Notificaciones: secretos de Cloudflare `VAPID_PRIVATE_JWK` y `PUSH_WEBHOOK_SECRET`, y
+  en Vault `push_webhook_url` y `push_webhook_secret`. El secreto debe coincidir en
+  ambos lados. Cambiar el par VAPID obliga a reactivar cada teléfono.
 - Supabase Free: se pausa tras 7 días sin actividad (`keepalive.yml` lo evita visitando
   la página; si cambia la dirección, actualizarla ahí) y **no tiene respaldos automáticos**.
   Con clientes reales, recomendar Supabase Pro.

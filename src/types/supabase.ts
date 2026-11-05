@@ -774,6 +774,38 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint: string
+          id: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint: string
+          id?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          endpoint?: string
+          id?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_member_fkey"
+            columns: ["tenant_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_members"
+            referencedColumns: ["tenant_id", "user_id"]
+          },
+        ]
+      }
       schedule_blocks: {
         Row: {
           barber_id: string | null
@@ -1022,6 +1054,10 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_push_subscription: {
+        Args: { _endpoint: string }
+        Returns: undefined
+      }
       find_client_by_phone: {
         Args: { _barber_id: string; _phone: string }
         Returns: Json
@@ -1072,6 +1108,10 @@ export type Database = {
           _salary_cents?: number
         }
         Returns: Json
+      }
+      save_push_subscription: {
+        Args: { _endpoint: string; _tenant_id: string }
+        Returns: undefined
       }
       set_appointment_status: {
         Args: {
